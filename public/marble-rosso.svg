@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="rbase" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#b0583a"/>
+      <stop offset="50%" stop-color="#8f4127"/>
+      <stop offset="100%" stop-color="#5f2a18"/>
+    </linearGradient>
+    <linearGradient id="rvein" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#faf3e2"/>
+      <stop offset="50%" stop-color="#e8d4b0"/>
+      <stop offset="100%" stop-color="#b79b6f"/>
+    </linearGradient>
+
+    <filter id="rstone">
+      <feTurbulence type="fractalNoise" baseFrequency="0.008" numOctaves="4" seed="4" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.4 0 0 0 0"/>
+      <feFlood flood-color="#3c1a10"/>
+      <feComposite in2="SourceGraphic" operator="in"/>
+    </filter>
+
+    <filter id="rrough" x="-15%" y="-15%" width="130%" height="130%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.02 0.03" numOctaves="3" seed="12" result="t"/>
+      <feDisplacementMap in="SourceGraphic" in2="t" scale="20" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="rsoft"><feGaussianBlur stdDeviation="4"/></filter>
+
+    <radialGradient id="rsheen" cx="28%" cy="14%" r="95%">
+      <stop offset="0" stop-color="#f0c9a0" stop-opacity="0.35"/>
+      <stop offset="55%" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+
+    <g id="rveins" fill="none" stroke-linecap="round">
+      <path id="rv1" d="M-30 180 C 120 140 210 250 320 220 S 480 250 640 210"/>
+      <path id="rv2" d="M-30 400 C 140 440 250 340 360 390 S 520 450 640 410"/>
+      <path id="rv3" d="M150 -30 C 210 160 150 320 270 410 S 360 560 320 640"/>
+      <path id="rb1" d="M320 220 C 350 270 320 330 380 360"/>
+      <path id="rb2" d="M270 410 C 230 430 200 480 140 490"/>
+      <path id="rb3" d="M120 250 C 70 270 50 330 90 380"/>
+    </g>
+  </defs>
+
+  <rect width="600" height="600" fill="url(#rbase)"/>
+  <rect width="600" height="600" filter="url(#rstone)" opacity="0.5"/>
+  <rect width="600" height="600" fill="url(#rsheen)"/>
+
+  <g filter="url(#rrough)">
+    <use href="#rveins" stroke="#f3e6cc" stroke-width="7" opacity="0.14" filter="url(#rsoft)"/>
+    <use href="#rv1" stroke="url(#rvein)" stroke-width="2.4" opacity="0.8"/>
+    <use href="#rv2" stroke="url(#rvein)" stroke-width="2" opacity="0.7"/>
+    <use href="#rv3" stroke="url(#rvein)" stroke-width="2.6" opacity="0.85"/>
+    <use href="#rb1" stroke="url(#rvein)" stroke-width="1.1" opacity="0.7"/>
+    <use href="#rb2" stroke="url(#rvein)" stroke-width="1" opacity="0.65"/>
+    <use href="#rb3" stroke="url(#rvein)" stroke-width="1" opacity="0.6"/>
+    <use href="#rv3" stroke="#fdf7ea" stroke-width="0.7" opacity="0.6"/>
+    <!-- darker fissures -->
+    <use href="#rv2" stroke="#3a190f" stroke-width="1.2" opacity="0.4"/>
+  </g>
+</svg>

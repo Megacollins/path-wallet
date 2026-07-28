@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14100a"/>
+      <stop offset="50%" stop-color="#0a0705"/>
+      <stop offset="100%" stop-color="#040302"/>
+    </linearGradient>
+    <linearGradient id="vein" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f6ecc9"/>
+      <stop offset="45%" stop-color="#e6c470"/>
+      <stop offset="100%" stop-color="#9c7b26"/>
+    </linearGradient>
+
+    <!-- faint neutral stone mottling -->
+    <filter id="stone">
+      <feTurbulence type="fractalNoise" baseFrequency="0.006" numOctaves="4" seed="3" result="n"/>
+      <feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.28 0 0 0 0"/>
+      <feFlood flood-color="#241f17"/>
+      <feComposite in2="SourceGraphic" operator="in"/>
+    </filter>
+
+    <!-- organic crinkle applied to the vector veins -->
+    <filter id="rough" x="-15%" y="-15%" width="130%" height="130%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.018 0.028" numOctaves="3" seed="9" result="t"/>
+      <feDisplacementMap in="SourceGraphic" in2="t" scale="22" xChannelSelector="R" yChannelSelector="G"/>
+    </filter>
+    <filter id="soft"><feGaussianBlur stdDeviation="4"/></filter>
+
+    <radialGradient id="sheen" cx="26%" cy="12%" r="95%">
+      <stop offset="0" stop-color="#2c2416" stop-opacity="0.42"/>
+      <stop offset="55%" stop-color="#000" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- the vein network (smooth beziers; roughened by the filter) -->
+    <g id="veins" fill="none" stroke-linecap="round">
+      <path id="v1" d="M-30 150 C 110 110 190 240 300 210 S 470 250 640 200"/>
+      <path id="v2" d="M-30 430 C 130 470 250 360 360 410 S 520 470 640 440"/>
+      <path id="v3" d="M120 -30 C 180 150 120 320 250 400 S 350 560 300 640"/>
+      <path id="v4" d="M430 -30 C 470 120 400 260 470 360 S 560 470 540 640"/>
+      <path id="b1" d="M300 210 C 330 260 300 320 360 350"/>
+      <path id="b2" d="M250 400 C 210 420 180 470 120 480"/>
+      <path id="b3" d="M470 200 C 500 240 540 250 590 235"/>
+      <path id="b4" d="M120 300 C 60 320 40 380 80 430"/>
+    </g>
+  </defs>
+
+  <rect width="600" height="600" fill="url(#base)"/>
+  <rect width="600" height="600" filter="url(#stone)" opacity="0.55"/>
+  <rect width="600" height="600" fill="url(#sheen)"/>
+
+  <g filter="url(#rough)">
+    <!-- soft glow beneath the veins -->
+    <use href="#veins" stroke="#caa64e" stroke-width="7" opacity="0.12" filter="url(#soft)"/>
+    <!-- main veins -->
+    <use href="#v1" stroke="url(#vein)" stroke-width="2.6" opacity="0.75"/>
+    <use href="#v2" stroke="url(#vein)" stroke-width="2.2" opacity="0.7"/>
+    <use href="#v3" stroke="url(#vein)" stroke-width="2.8" opacity="0.8"/>
+    <use href="#v4" stroke="url(#vein)" stroke-width="2" opacity="0.6"/>
+    <!-- fine branches -->
+    <use href="#b1" stroke="url(#vein)" stroke-width="1.1" opacity="0.7"/>
+    <use href="#b2" stroke="url(#vein)" stroke-width="1" opacity="0.6"/>
+    <use href="#b3" stroke="url(#vein)" stroke-width="1.2" opacity="0.7"/>
+    <use href="#b4" stroke="url(#vein)" stroke-width="0.9" opacity="0.55"/>
+    <!-- bright cores + a couple pale hairlines -->
+    <use href="#v1" stroke="#f7efd6" stroke-width="0.7" opacity="0.6"/>
+    <use href="#v3" stroke="#f7efd6" stroke-width="0.7" opacity="0.6"/>
+  </g>
+</svg>

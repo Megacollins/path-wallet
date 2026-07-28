@@ -1,0 +1,8 @@
+node_modules
+dist
+.env
+*.local
+src/config.generated.json
+server/.faucet-state.json
+.vercel
+.claude
