@@ -13,4 +13,10 @@ export default defineConfig({
       globals: { Buffer: true, global: true, process: true },
     }),
   ],
+  build: {
+    // WalletApp.tsx (wagmi + viem + @solana/wallet-adapter + the Rome SDK) is
+    // a legitimately heavy chunk — it's lazy-loaded and only fetched once a
+    // visitor leaves the marketing pages, so 500kB isn't the right bar for it.
+    chunkSizeWarningLimit: 750,
+  },
 });

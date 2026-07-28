@@ -1,37 +1,33 @@
+import { lazy, Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
-import { AppShell } from "./components/layout";
-import { Landing } from "./pages/Landing";
-import { Dashboard } from "./pages/Dashboard";
-import { Send } from "./pages/Send";
-import { Bridge } from "./pages/Bridge";
-import { Vault } from "./pages/Vault";
-import { Apps } from "./pages/Apps";
-import { Settings } from "./pages/Settings";
-import { Showcase } from "./pages/Showcase";
+import { Spinner } from "./components/ui";
+
+// Route-level code splitting: the marketing pages (Landing, Showcase) never
+// need wagmi/viem/@solana, so the entire wallet app — provider tree, shell,
+// and its pages — lives in one lazy chunk (see WalletApp.tsx) that only loads
+// once a visitor actually navigates past the landing page.
+const Landing = lazy(() => import("./pages/Landing").then((m) => ({ default: m.Landing })));
+const Showcase = lazy(() => import("./pages/Showcase").then((m) => ({ default: m.Showcase })));
+const WalletApp = lazy(() => import("./WalletApp").then((m) => ({ default: m.WalletApp })));
+
+function PageFallback() {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center">
+      <Spinner className="h-6 w-6 text-gold-200" />
+    </div>
+  );
+}
 
 export default function App() {
   return (
-    <Routes>
-      {/* Full-bleed pages — rendered outside the app chrome. */}
-      <Route path="/" element={<Landing />} />
-      <Route path="/showcase" element={<Showcase />} />
-      {/* The wallet app, under the shell. */}
-      <Route
-        path="*"
-        element={
-          <AppShell>
-            <Routes>
-              <Route path="/app" element={<Dashboard />} />
-              <Route path="/send" element={<Send />} />
-              <Route path="/bridge" element={<Bridge />} />
-              <Route path="/vault" element={<Vault />} />
-              <Route path="/apps" element={<Apps />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="*" element={<Dashboard />} />
-            </Routes>
-          </AppShell>
-        }
-      />
-    </Routes>
+    <Suspense fallback={<PageFallback />}>
+      <Routes>
+        {/* Full-bleed pages — rendered outside the app chrome. */}
+        <Route path="/" element={<Landing />} />
+        <Route path="/showcase" element={<Showcase />} />
+        {/* The wallet app: its own provider tree + shell + pages, all lazy. */}
+        <Route path="*" element={<WalletApp />} />
+      </Routes>
+    </Suspense>
   );
 }
