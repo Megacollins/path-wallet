@@ -36,7 +36,9 @@ export function WalletCard({
     <motion.div
       whileHover={{ y: -4, rotateX: 2 }}
       transition={{ type: "spring", stiffness: 300, damping: 24 }}
-      className={`${surface} scallop-card marble-sheen relative flex aspect-[1.62/1] flex-col justify-between p-5`}
+      // aspect-ratio is the target shape, min-h the floor: a network-warning line or a
+      // longer wallet name can no longer push content out of a narrow phone card
+      className={`${surface} scallop-card marble-sheen relative flex aspect-[1.62/1] min-h-[11.5rem] flex-col justify-between gap-3 p-5`}
       style={{ transformStyle: "preserve-3d", filter: "drop-shadow(0 24px 34px rgba(0,0,0,0.85))" }}
     >
       {/* debossed Path mark */}

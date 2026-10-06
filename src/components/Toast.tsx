@@ -63,7 +63,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={{ push, update, dismiss, run }}>
       {children}
-      <div className="fixed z-50 bottom-24 sm:bottom-6 right-4 left-4 sm:left-auto sm:w-96 flex flex-col gap-2 pointer-events-none">
+      {/* above the mobile bottom nav (+ home-indicator inset); bottom-right card from sm up */}
+      <div className="pointer-events-none fixed inset-x-4 bottom-[calc(6.25rem+env(safe-area-inset-bottom))] z-50 flex flex-col gap-2 sm:inset-x-auto sm:bottom-6 sm:right-6 sm:w-96">
         <AnimatePresence>
           {toasts.map((t) => (
             <motion.div

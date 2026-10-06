@@ -27,7 +27,7 @@ export function WalletButton() {
     <div className="relative" ref={ref}>
       <button
         onClick={() => setOpen((v) => !v)}
-        className={anyConnected ? "btn-ghost" : "btn-gold"}
+        className={`whitespace-nowrap ${anyConnected ? "btn-ghost !px-3 sm:!px-5" : "btn-gold !px-4 sm:!px-5"}`}
         aria-haspopup="true"
         aria-expanded={open}
       >
@@ -40,7 +40,10 @@ export function WalletButton() {
             <span className="hidden sm:inline text-sm">{count === 2 ? "Both lanes" : "1 lane"}</span>
           </span>
         ) : (
-          <span className="flex items-center gap-2">Connect wallets</span>
+          <span className="flex items-center gap-2">
+            <span className="sm:hidden">Connect</span>
+            <span className="hidden sm:inline">Connect wallets</span>
+          </span>
         )}
       </button>
 
@@ -131,7 +134,7 @@ function LaneRow({
     <div className="flex items-center gap-3">
       <div className="grid place-items-center h-9 w-9 rounded-full bg-stone-800 border border-gold/25 text-lg shrink-0">{glyph}</div>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-2">
           <span className="text-sm text-parchment">{name}</span>
           <span className="text-[10px] uppercase tracking-widest text-parchment/40">{lane}</span>
         </div>
@@ -147,15 +150,15 @@ function LaneRow({
         )}
       </div>
       {connected ? (
-        <button onClick={onDisconnect} className="btn-ghost !px-3 !py-1.5 text-xs">
+        <button onClick={onDisconnect} className="btn-ghost shrink-0 whitespace-nowrap !px-3 !py-1.5 text-xs">
           Disconnect
         </button>
       ) : available ? (
-        <button onClick={onConnect} className="btn-gold !px-3 !py-1.5 text-xs" disabled={connecting}>
+        <button onClick={onConnect} className="btn-gold shrink-0 whitespace-nowrap !px-3 !py-1.5 text-xs" disabled={connecting}>
           {connecting ? "…" : "Connect"}
         </button>
       ) : (
-        <a href={installHref} target="_blank" rel="noreferrer" className="btn-ghost !px-3 !py-1.5 text-xs">
+        <a href={installHref} target="_blank" rel="noreferrer" className="btn-ghost shrink-0 whitespace-nowrap !px-3 !py-1.5 text-xs">
           Install
         </a>
       )}

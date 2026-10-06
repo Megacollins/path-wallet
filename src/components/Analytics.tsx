@@ -17,8 +17,14 @@ export function AllocationRing({
   const c = 2 * Math.PI * r;
   let offset = 0;
   return (
-    <div className="flex items-center gap-5">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="-rotate-90">
+    <div className="flex items-center gap-4 sm:gap-5">
+      {/* width = min(size, 28vw): on a 320px phone the ring + its legend overflowed
+          the card; the viewBox keeps it a perfect circle at any width. */}
+      <svg
+        viewBox={`0 0 ${size} ${size}`}
+        className="h-auto shrink-0 -rotate-90"
+        style={{ width: `min(${size}px, 28vw)` }}
+      >
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.05)" strokeWidth={stroke} />
         {data.map((d, i) => {
           const len = (d.pct / 100) * c;
@@ -43,11 +49,11 @@ export function AllocationRing({
           return el;
         })}
       </svg>
-      <ul className="space-y-1.5">
+      <ul className="min-w-0 space-y-1.5">
         {data.map((d, i) => (
           <li key={d.symbol} className="flex items-center gap-2 text-sm">
-            <span className="h-2.5 w-2.5 rounded-full" style={{ background: SLICE_COLORS[i % SLICE_COLORS.length] }} />
-            <span className="text-parchment/85 w-14">{d.symbol}</span>
+            <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: SLICE_COLORS[i % SLICE_COLORS.length] }} />
+            <span className="w-12 text-parchment/85 sm:w-14">{d.symbol}</span>
             <span className="tabular text-parchment/45 text-xs">{d.pct.toFixed(1)}%</span>
           </li>
         ))}
@@ -68,7 +74,9 @@ export function Sparkline({ points, width = 260, height = 64 }: { points: number
   const up = points[points.length - 1] >= points[0];
   const line = up ? "#E0C98E" : "#B5533C";
   return (
-    <svg width="100%" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="overflow-visible">
+    // Fixed pixel height + stretched width: without `height` the viewBox aspect
+    // ratio made the chart grow taller the wider its card got (3x on a big screen).
+    <svg width="100%" height={height} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" className="overflow-visible">
       <defs>
         <linearGradient id="spark-fill" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor={line} stopOpacity="0.25" />

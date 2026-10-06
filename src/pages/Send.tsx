@@ -138,16 +138,17 @@ export function Send() {
 
         {/* Recipient */}
         <label className="label-eyebrow">Recipient (Rome EVM address)</label>
-        <input value={to} onChange={(e) => setTo(e.target.value)} placeholder="0x…" className="input-stone mt-2 font-mono text-sm" spellCheck={false} />
+        {/* 16px on phones (iOS zooms the page on focus below that); 14px mono from sm up */}
+        <input value={to} onChange={(e) => setTo(e.target.value)} placeholder="0x…" className="input-stone mt-2 font-mono text-base sm:text-sm" spellCheck={false} autoCapitalize="none" autoCorrect="off" />
         {to && !recipientValid && <p className="mt-1 text-xs text-terracotta-300">Enter a valid 0x address.</p>}
 
         {/* Amount */}
-        <div className="mt-4 flex items-baseline justify-between">
+        <div className="mt-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
           <label className="label-eyebrow">Amount</label>
           {(evm.address || solana.connected) && (
             <span className="text-xs text-parchment/50">
               Balance: <span className="tabular text-parchment/80">{balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span> {balSymbol}
-              <button onClick={() => setAmount(String(maxAmount))} disabled={busy || maxAmount <= 0} className="ml-2 text-champagne-200 hover:text-champagne-100 disabled:opacity-40">
+              <button onClick={() => setAmount(String(maxAmount))} disabled={busy || maxAmount <= 0} className="-my-1.5 ml-1 px-1.5 py-1.5 text-champagne-200 hover:text-champagne-100 disabled:opacity-40">
                 Max
               </button>
             </span>
@@ -209,13 +210,14 @@ function LaneTab({
     <button
       onClick={onClick}
       disabled={disabled}
-      className={`flex items-center justify-center gap-2 rounded-lg py-2.5 text-sm transition ${
+      className={`flex min-w-0 items-center justify-center gap-1.5 rounded-lg px-1 py-2.5 text-sm transition sm:gap-2 ${
         active ? "bg-gold-sheen text-stone-950 font-medium shadow-gold" : "text-parchment/60 hover:text-parchment disabled:opacity-30"
       }`}
     >
       <span>{glyph}</span>
       <span>{label}</span>
-      <span className={`text-[10px] uppercase tracking-widest ${active ? "text-stone-900/70" : "text-parchment/30"}`}>{sub}</span>
+      {/* the EVM/Solana tag is dropped on very narrow phones — "🦊 MetaMask EVM" is wider than half a 320px card */}
+      <span className={`hidden text-[10px] uppercase tracking-widest min-[400px]:inline ${active ? "text-stone-900/70" : "text-parchment/30"}`}>{sub}</span>
     </button>
   );
 }

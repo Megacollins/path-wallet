@@ -137,13 +137,13 @@ export function Dashboard() {
             )}
 
             {loading && !port ? (
-              <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
                 {cfg.tokens.map((t) => (
                   <Skeleton key={t.symbol} className="aspect-square rounded-3xl" />
                 ))}
               </div>
             ) : port ? (
-              <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 lg:grid-cols-4">
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
                 {port.assets.map((a, i) => (
                   <TokenTile key={a.symbol} asset={a} index={i} />
                 ))}
@@ -178,18 +178,23 @@ function BalanceHero({
   demo: boolean;
 }) {
   const up = (change24h ?? 0) >= 0;
+  // Size the headline by its own length: a short figure stays big, a 9-figure one
+  // shrinks to still fit the card (~0.43em per glyph incl. commas, + a little slack).
+  // Uses the FINAL formatted string so the size doesn't jump while the number counts up.
+  const digits = total == null ? 1 : formatUsd(total).length;
+  const balanceSize = `clamp(2rem, ${Math.min(24, 100 / (digits * 0.45 + 0.3)).toFixed(1)}cqw, 4.75rem)`;
   return (
-    <Card className="relative flex h-full flex-col overflow-hidden hover-glow !p-6 sm:!p-8">
+    <Card className="cq relative flex h-full flex-col overflow-hidden hover-glow !p-6 sm:!p-8">
       <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-champagne/10 blur-3xl" />
       <div className="relative">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <Eyebrow>Total balance · both lanes</Eyebrow>
           {demo && <span className="chip !py-0.5 !text-[10px]">Demo</span>}
         </div>
         {loading ? (
-          <Skeleton className="mt-3 h-14 w-64" />
+          <Skeleton className="mt-3 h-14 w-full max-w-64" />
         ) : (
-          <div className="tabular mt-2 font-serif text-6xl sm:text-7xl leading-none text-parchment">
+          <div className="fluid-balance tabular mt-2 whitespace-nowrap font-serif text-parchment" style={{ fontSize: balanceSize }}>
             {total == null ? "—" : <AnimatedNumber value={total} format={formatUsd} />}
           </div>
         )}

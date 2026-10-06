@@ -23,7 +23,15 @@
       radial-gradient(120% 90% at 50% -10%, rgba(201, 162, 39, 0.08) 0%, transparent 55%),
       radial-gradient(80% 60% at 100% 0%, rgba(181, 83, 60, 0.06) 0%, transparent 60%),
       linear-gradient(180deg, #100e0a 0%, #0b0a08 100%);
-    background-attachment: fixed;
+    -webkit-tap-highlight-color: transparent;
+    overflow-x: clip; /* last-resort guard: a stray wide element can't create a sideways scroll */
+  }
+  /* `fixed` backgrounds repaint on every scroll frame and are ignored by iOS
+     Safari — only pin the backdrop where there's a mouse. */
+  @media (hover: hover) and (pointer: fine) {
+    body {
+      background-attachment: fixed;
+    }
   }
 
   h1, h2, h3, h4, .font-display {
@@ -228,10 +236,24 @@
     background-image: linear-gradient(135deg, #C4623F 0%, #B5533C 55%, #94402E 100%);
   }
 
+  /* text-base (16px) on purpose: iOS Safari zooms the page on focus for any input under 16px. */
   .input-stone {
-    @apply w-full rounded-2xl border border-champagne/20 bg-stone-900/70 px-4 py-3 text-parchment
+    @apply w-full min-w-0 rounded-2xl border border-champagne/20 bg-stone-900/70 px-4 py-3 text-base text-parchment
            placeholder:text-parchment/30 focus:outline-none focus:border-champagne/60
            focus:ring-2 focus:ring-champagne/20 transition tabular;
+  }
+
+  /* Headline numbers that scale with the CARD they sit in (container query
+     units), not the viewport — the dashboard hero is 400px wide on a 1024px
+     laptop and 288px on a phone, so vw/breakpoint sizes both get it wrong. The
+     vw line is the fallback for browsers without cqw. */
+  .cq {
+    container-type: inline-size;
+  }
+  .fluid-balance {
+    font-size: clamp(2.5rem, 13vw, 4.5rem);
+    font-size: clamp(2.5rem, 18cqw, 4.75rem);
+    line-height: 1;
   }
 
   .chip {

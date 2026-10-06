@@ -42,7 +42,9 @@ export function TokenTile({ asset, index = 0 }: { asset: AssetBalance; index?: n
       animate={{ opacity: 1, y: 0 }}
       whileHover={{ y: -4 }}
       transition={{ delay: Math.min(index * 0.05, 0.35), type: "spring", stiffness: 300, damping: 22 }}
-      className={`${rosso ? "marble-rosso" : "marble"} marble-sheen hover-glow relative flex aspect-square flex-col items-center justify-center gap-2 p-4 text-center`}
+      // Two-up grid on a phone makes tiles ~134px wide: a forced square clipped the
+      // amount row, so below sm the tile grows to fit its content instead.
+      className={`${rosso ? "marble-rosso" : "marble"} marble-sheen hover-glow relative flex aspect-auto min-h-[9.5rem] flex-col items-center justify-center gap-2 p-3 text-center sm:aspect-square sm:min-h-0 sm:p-4`}
     >
       {asset.change24h != null && (
         <span
@@ -56,12 +58,12 @@ export function TokenTile({ asset, index = 0 }: { asset: AssetBalance; index?: n
       )}
       {/* legibility scrim so text reads over light (rosso) marble */}
       <div className="pointer-events-none absolute inset-0 rounded-[inherit]" style={{ background: "radial-gradient(72% 62% at 50% 62%, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.15) 62%, transparent 100%)" }} />
-      <div className="relative z-10 grid h-12 w-12 place-items-center rounded-full border border-champagne/25 bg-black/30 backdrop-blur-[1px]">
+      <div className="relative z-10 grid h-11 w-11 place-items-center rounded-full border border-champagne/25 bg-black/30 backdrop-blur-[1px] sm:h-12 sm:w-12">
         <TokenEmblem symbol={asset.symbol} />
       </div>
       <div className="relative z-10 font-serif text-lg emboss-gold leading-none">{asset.symbol}</div>
-      <div className="relative z-10 leading-tight">
-        <div className="tabular text-sm text-parchment">
+      <div className="relative z-10 max-w-full leading-tight">
+        <div className="tabular truncate text-sm text-parchment">
           {formatAmount(BigInt(Math.round(asset.amount * 10 ** asset.decimals)), asset.decimals)}
         </div>
         <div className="tabular text-[11px] text-parchment/60">{asset.usdValue != null ? formatUsdCompact(asset.usdValue) : "—"}</div>

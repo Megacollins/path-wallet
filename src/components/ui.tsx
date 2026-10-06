@@ -80,6 +80,8 @@ export function TokenGlyph({ symbol, size = 40 }: { symbol: string; size?: numbe
 export function Copyable({ text, display, className = "" }: { text: string; display?: string; className?: string }) {
   const [copied, setCopied] = useState(false);
   return (
+    // max-w-full + break-all: a full RPC URL or address wraps inside its card
+    // instead of being clipped by the card's overflow:hidden on narrow screens.
     <button
       onClick={() => {
         navigator.clipboard?.writeText(text).then(() => {
@@ -87,11 +89,11 @@ export function Copyable({ text, display, className = "" }: { text: string; disp
           setTimeout(() => setCopied(false), 1200);
         });
       }}
-      className={`group inline-flex items-center gap-1.5 font-mono text-xs text-parchment/60 hover:text-gold-100 transition ${className}`}
+      className={`group inline-flex max-w-full items-start gap-1.5 text-left font-mono text-xs text-parchment/60 hover:text-gold-100 transition ${className}`}
       title="Copy"
     >
-      {display ?? shorten(text)}
-      <span className="text-gold/70">{copied ? "✓" : "⧉"}</span>
+      <span className="min-w-0 break-all">{display ?? shorten(text)}</span>
+      <span className="shrink-0 text-gold/70">{copied ? "✓" : "⧉"}</span>
     </button>
   );
 }

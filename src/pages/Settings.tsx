@@ -81,7 +81,7 @@ export function Settings() {
                   </button>
                 </div>
                 {synthetic && (
-                  <div className="flex items-center gap-1.5 text-[11px] text-parchment/40">
+                  <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-parchment/40">
                     <span>synthetic EVM identity:</span>
                     <Copyable text={synthetic} />
                   </div>
@@ -125,13 +125,13 @@ export function Settings() {
           {cfg.tokens.map((t) => (
             <li key={t.symbol} className="flex items-center gap-3 py-2.5">
               <TokenGlyph symbol={t.symbol} size={30} />
-              <div className="flex-1">
+              <div className="min-w-0 flex-1">
                 <div className="text-sm text-parchment">
                   {t.symbol} <span className="text-parchment/40">· {t.name}</span>
                 </div>
                 <Copyable text={t.address} />
               </div>
-              <span className="chip !py-0.5 !text-[10px]">{t.kind}</span>
+              <span className="chip shrink-0 !py-0.5 !text-[10px]">{t.kind}</span>
             </li>
           ))}
         </ul>
@@ -147,9 +147,10 @@ export function Settings() {
 
 function Row({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div>
+    // min-w-0: grid items won't shrink below their content otherwise, so a long RPC URL widened the whole card
+    <div className="min-w-0">
       <dt className="label-eyebrow">{label}</dt>
-      <dd className="mt-0.5 text-sm text-parchment/85">{children}</dd>
+      <dd className="mt-0.5 break-words text-sm text-parchment/85">{children}</dd>
     </div>
   );
 }
@@ -158,7 +159,7 @@ function LaneLine({ glyph, name, connected, children }: { glyph: string; name: s
   return (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-center gap-3">
-        <span className="grid h-9 w-9 place-items-center rounded-full border border-gold/25 bg-stone-800 text-lg">{glyph}</span>
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-gold/25 bg-stone-800 text-lg">{glyph}</span>
         <div>
           <div className="text-sm text-parchment">{name}</div>
           <div className={`text-[11px] ${connected ? "text-emerald-300" : "text-parchment/40"}`}>{connected ? "connected" : "not connected"}</div>

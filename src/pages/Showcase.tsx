@@ -26,7 +26,7 @@ export function Showcase() {
   const top = p.assets.slice(0, 3);
 
   return (
-    <div className="stage vignette relative min-h-screen w-full overflow-hidden text-parchment">
+    <div className="stage vignette relative min-h-screen min-h-dvh w-full overflow-hidden text-parchment">
       {/* ---- depth layers ---- */}
       {/* real marble backdrop photo when present, else procedural SVG */}
       <div
@@ -49,12 +49,12 @@ export function Showcase() {
       <div className="pointer-events-none absolute left-1/2 top-[12%] h-[360px] w-[360px] -translate-x-1/2 rounded-full bg-champagne/20 blur-[90px]" />
 
       {/* ---- content ---- */}
-      <div className="relative z-10 mx-auto flex min-h-screen max-w-6xl flex-col items-center px-6 py-12 sm:py-16">
-        {/* eyebrow */}
-        <motion.div {...rise(0)} className="mb-10 flex items-center gap-4">
-          <span className="h-px w-12 bg-gradient-to-r from-transparent to-champagne/60" />
-          <span className="font-sans text-[11px] uppercase tracking-[0.42em] text-champagne-200">Path · Private Wealth</span>
-          <span className="h-px w-12 bg-gradient-to-l from-transparent to-champagne/60" />
+      <div className="relative z-10 mx-auto flex min-h-screen min-h-dvh max-w-6xl flex-col items-center px-5 py-12 sm:px-6 sm:py-16 2xl:max-w-7xl">
+        {/* eyebrow — tracking and rules tighten on phones so it fits a 320px screen */}
+        <motion.div {...rise(0)} className="mb-10 flex items-center gap-3 sm:gap-4">
+          <span className="h-px w-6 bg-gradient-to-r from-transparent to-champagne/60 sm:w-12" />
+          <span className="whitespace-nowrap font-sans text-[10px] uppercase tracking-[0.3em] text-champagne-200 sm:text-[11px] sm:tracking-[0.42em]">Path · Private Wealth</span>
+          <span className="h-px w-6 bg-gradient-to-l from-transparent to-champagne/60 sm:w-12" />
         </motion.div>
 
         {/* the gold sculpture, enshrined on the stage */}
@@ -73,12 +73,13 @@ export function Showcase() {
         </motion.div>
 
         {/* balance — gold foil */}
-        <motion.div {...rise(0.25)} className="mt-10 text-center">
+        <motion.div {...rise(0.25)} className="mt-10 w-full text-center">
           <p className="label-eyebrow">Total holdings · both lanes</p>
-          <div className="text-foil font-serif text-6xl leading-none sm:text-8xl">
+          {/* fluid: 14vw fits "$53,081.98" in the 272px column of a 320px phone; caps at 6rem */}
+          <div className="text-foil font-serif leading-none text-[clamp(2.5rem,14vw,6rem)]">
             <AnimatedNumber value={p.totalUsd} format={formatUsd} />
           </div>
-          <div className="mt-4 flex items-center justify-center gap-3">
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-2 sm:gap-3">
             <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-3 py-1 text-sm font-medium text-emerald-300">
               <ArrowUpRight className="h-4 w-4" /> {DEMO_CHANGE_24H.toFixed(2)}% <span className="opacity-60">24h</span>
             </span>
@@ -88,15 +89,15 @@ export function Showcase() {
         </motion.div>
 
         {/* floating instruments */}
-        <div className="mt-12 grid w-full gap-6 lg:grid-cols-3">
-          <motion.div {...rise(0.35)} className="glass-strong depth rounded-3xl p-6">
+        <div className="mt-12 grid w-full gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <motion.div {...rise(0.35)} className="glass-strong depth rounded-3xl p-5 sm:p-6">
             <p className="label-eyebrow">Allocation</p>
             <div className="mt-4">
               <AllocationRing data={alloc} size={116} />
             </div>
           </motion.div>
 
-          <motion.div {...rise(0.42)} className="glass-strong depth rounded-3xl p-6">
+          <motion.div {...rise(0.42)} className="glass-strong depth rounded-3xl p-5 sm:p-6">
             <div className="flex items-center justify-between">
               <p className="label-eyebrow">30-day trend</p>
               <span className="text-xs text-emerald-300">▲ {DEMO_CHANGE_24H.toFixed(2)}%</span>
@@ -110,13 +111,13 @@ export function Showcase() {
             </div>
           </motion.div>
 
-          <motion.div {...rise(0.5)} className="glass-strong depth rounded-3xl p-6">
+          <motion.div {...rise(0.5)} className="glass-strong depth rounded-3xl p-5 sm:p-6 md:col-span-2 lg:col-span-1">
             <p className="label-eyebrow">Holdings</p>
             <ul className="mt-4 space-y-3">
               {top.map((a) => (
-                <li key={a.symbol} className="flex items-center justify-between">
+                <li key={a.symbol} className="flex items-center justify-between gap-3">
                   <div className="flex items-center gap-3">
-                    <span className="grid h-9 w-9 place-items-center rounded-full border border-champagne/25 bg-black/30 font-serif text-sm text-champagne-100">
+                    <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-champagne/25 bg-black/30 font-serif text-sm text-champagne-100">
                       {a.symbol.replace(/^w/, "").slice(0, 2)}
                     </span>
                     <span className="text-sm text-parchment/85">{a.symbol}</span>
@@ -152,7 +153,7 @@ function Sculpture() {
   const [failed, setFailed] = useState(false);
   if (failed) {
     return (
-      <div className="arch gold-frame marble-white relative z-10 h-[380px] w-[300px] overflow-hidden sm:h-[440px] sm:w-[340px]">
+      <div className="arch gold-frame marble-white relative z-10 aspect-[300/380] w-[min(300px,100%)] overflow-hidden sm:aspect-[340/440] sm:w-[340px]">
         <div className="greek-key absolute inset-x-0 top-0 h-[6px] opacity-70" />
         <div className="arch niche absolute inset-[14px] flex items-center justify-center overflow-hidden" style={{ background: "radial-gradient(80% 70% at 50% 38%, #241d10, #0c0a06 78%)" }}>
           <div className="absolute left-1/2 top-[38%] h-56 w-56 -translate-x-1/2 -translate-y-1/2 rounded-full bg-champagne/25 blur-3xl" />

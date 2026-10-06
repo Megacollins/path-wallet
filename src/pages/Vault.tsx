@@ -158,7 +158,7 @@ export function Vault() {
               </div>
             )}
 
-            <div className="flex items-baseline justify-between">
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
               <label className="label-eyebrow">Amount</label>
               {laneReady && (
                 <span className="text-xs text-parchment/50">
@@ -167,7 +167,7 @@ export function Vault() {
                   <button
                     onClick={() => setAmount(String(depositMax))}
                     disabled={Boolean(busy) || depositMax <= 0}
-                    className="ml-1.5 text-champagne-200 hover:text-champagne-100 disabled:opacity-40"
+                    className="-my-1.5 ml-1 px-1.5 py-1.5 text-champagne-200 hover:text-champagne-100 disabled:opacity-40"
                   >
                     Max
                   </button>
@@ -176,13 +176,13 @@ export function Vault() {
             </div>
             <input value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" className="input-stone mt-2 text-lg" placeholder="0.1" />
             {laneReady && (
-              <div className="mt-1.5 flex items-baseline justify-end text-[11px] text-parchment/40">
+              <div className="mt-1.5 flex flex-wrap items-baseline justify-end text-[11px] text-parchment/40">
                 In vault: <span className="tabular ml-1 text-parchment/60">{vaultBalance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>{" "}
                 wUSDC
                 <button
                   onClick={() => setAmount(String(vaultBalance))}
                   disabled={Boolean(busy) || vaultBalance <= 0}
-                  className="ml-1.5 text-champagne-200 hover:text-champagne-100 disabled:opacity-40"
+                  className="-my-1.5 ml-1 px-1.5 py-1.5 text-champagne-200 hover:text-champagne-100 disabled:opacity-40"
                 >
                   Max
                 </button>

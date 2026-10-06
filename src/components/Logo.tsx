@@ -47,11 +47,11 @@ export function PathMark({ size = 40, animated = false }: { size?: number; anima
   );
 }
 
-export function Wordmark({ size = 40, animated = false }: { size?: number; animated?: boolean }) {
+export function Wordmark({ size = 40, animated = false, textClassName = "" }: { size?: number; animated?: boolean; textClassName?: string }) {
   return (
     <div className="flex items-center gap-3 select-none">
       <PathMark size={size} animated={animated} />
-      <span className="font-serif font-semibold tracking-wide text-parchment" style={{ fontSize: size * 0.64, lineHeight: 1 }}>
+      <span className={`font-serif font-semibold tracking-wide text-parchment ${textClassName}`} style={{ fontSize: size * 0.64, lineHeight: 1 }}>
         Path
       </span>
     </div>

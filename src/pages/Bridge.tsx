@@ -188,12 +188,12 @@ export function Bridge() {
             </div>
           </div>
 
-          <div className="mt-4 flex items-baseline justify-between">
+          <div className="mt-4 flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
             <label className="label-eyebrow">Amount (USDC)</label>
             {srcBalance != null && (
               <span className="text-xs text-parchment/50">
                 Balance: <span className="tabular text-parchment/80">{srcBalance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
-                <button onClick={() => setAmount(String(srcBalance))} disabled={busy || srcBalance <= 0} className="ml-2 text-champagne-200 hover:text-champagne-100 disabled:opacity-40">
+                <button onClick={() => setAmount(String(srcBalance))} disabled={busy || srcBalance <= 0} className="-my-1.5 ml-1 px-1.5 py-1.5 text-champagne-200 hover:text-champagne-100 disabled:opacity-40">
                   Max
                 </button>
               </span>
@@ -272,9 +272,9 @@ export function Bridge() {
 
 function QuoteRow({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
   return (
-    <div className="flex items-center justify-between">
-      <dt className="text-parchment/50">{label}</dt>
-      <dd className={`tabular ${strong ? "font-medium text-champagne-100" : "text-parchment/85"}`}>{value}</dd>
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="shrink-0 text-parchment/50">{label}</dt>
+      <dd className={`tabular text-right ${strong ? "font-medium text-champagne-100" : "text-parchment/85"}`}>{value}</dd>
     </div>
   );
 }

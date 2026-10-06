@@ -39,16 +39,17 @@ export function StarterGasBanner({ address, onFunded }: { address: Hex; onFunded
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="glass depth flex flex-wrap items-center justify-between gap-4 rounded-3xl p-4 sm:p-5">
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-gold-sheen text-stone-950 shadow-gold">
           <Waypoints className="h-5 w-5" />
         </span>
-        <div>
+        <div className="min-w-0">
           <p className="font-serif text-lg text-parchment">New to Rome? Fund your wallet</p>
           <p className="text-xs text-parchment/55">Gas on Rome is USDC — bring some in to start transacting.</p>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      {/* full-width, equal buttons when the banner stacks on a phone */}
+      <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto [&>*]:flex-1 sm:[&>*]:flex-none">
         {FAUCET_URL && (
           <Button variant="ghost" onClick={claim} loading={busy}>
             <Droplets className="h-4 w-4" /> {busy ? "Claiming…" : "Claim starter gas"}
