@@ -1,13 +1,24 @@
 // "Bridge USDC in" — brings USDC from a testnet source chain into Rome as gas,
 // via the official Rome bridge (SDK + rome-bridge-api). Needs VITE_BRIDGE_API_URL
 // set to a hosted rome-bridge-api endpoint; degrades to a helpful notice otherwise.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowRight, ExternalLink, Spline } from "lucide-react";
 import type { Hex } from "viem";
 import { parseAmountSafe } from "../../lib/format";
 import { readAccountStatus, readErc20Human } from "../../lib/assets";
-import { bridgeUsdcIn, getBridgeQuote, loadPendingBurns, resumeBridge, type BridgePhase, type PendingBurn, type QuotePreview } from "../../lib/bridge";
+import {
+  bridgeUsdcIn,
+  burnWasRelayed,
+  clearPendingBurn,
+  getBridgeQuote,
+  loadPendingBurns,
+  markPendingBlocked,
+  resumeBridge,
+  type BridgePhase,
+  type PendingBurn,
+  type QuotePreview,
+} from "../../lib/bridge";
 import { cfg } from "../config";
 import { useWallets } from "../wallet";
 import { useToast } from "../components/Toast";
@@ -131,6 +142,26 @@ export function Bridge() {
   const [recoverOpen, setRecoverOpen] = useState(false);
   const refreshPending = () => setPending(evm.address ? loadPendingBurns(evm.address) : []);
   useEffect(refreshPending, [evm.address, busy]);
+
+  // A saved burn that a relayer sent (smart-account wallet) can never be registered —
+  // spot it up front so we don't offer a Finish button that is certain to fail.
+  const checkedBurns = useRef(new Set<string>());
+  useEffect(() => {
+    for (const p of pending) {
+      if (p.blocked || checkedBurns.current.has(p.burnHash)) continue;
+      checkedBurns.current.add(p.burnHash);
+      const src = sources.find((s) => s.chainId === p.sourceChainId);
+      if (!src) continue;
+      void burnWasRelayed(src.rpcUrl, p.burnHash, p.address).then((relayed) => {
+        if (relayed === true) {
+          markPendingBlocked(p.burnHash);
+          refreshPending();
+        }
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pending]);
+
   const recoverHashValid = /^0x[0-9a-fA-F]{64}$/.test(recoverHash.trim());
 
   /** Shared runner: busy state, live phase, success/failure toasts. */
@@ -217,6 +248,41 @@ export function Bridge() {
         {/* A burn that was never registered — the USDC is in the air until this is finished. */}
         {pending.map((p) => {
           const src = sources.find((s) => s.chainId === p.sourceChainId);
+          const usdc = (Number(p.amount6) / 1e6).toLocaleString();
+          if (p.blocked) {
+            // Sent by a relayer: the bridge will never register it, so no Finish button — only Rome can settle it.
+            return (
+              <Card key={p.burnHash} className="max-w-xl border-terracotta-500/40">
+                <Eyebrow>Burned — needs Rome to settle</Eyebrow>
+                <p className="mt-2 text-sm text-parchment/80">
+                  {usdc} USDC from {src?.name ?? `chain ${p.sourceChainId}`} was burned, but your wallet sent it through a smart account (a relayer, not your own address), and the
+                  bridge only registers burns sent directly by their owner — so <span className="text-parchment">Finish can't work for this one</span>. The USDC isn't lost: Circle has
+                  attested the burn and it can be minted to you. Send Rome this burn tx hash and ask them to settle it.
+                </p>
+                <p className="mt-1 break-all font-mono text-[11px] text-parchment/40">burn tx {p.burnHash}</p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      void navigator.clipboard?.writeText(p.burnHash);
+                      toast.push({ kind: "success", title: "Copied", message: "Burn transaction hash copied." });
+                    }}
+                  >
+                    Copy burn tx hash
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => {
+                      clearPendingBurn(p.burnHash);
+                      refreshPending();
+                    }}
+                  >
+                    Dismiss
+                  </Button>
+                </div>
+              </Card>
+            );
+          }
           return (
             <Card key={p.burnHash} className="max-w-xl border-champagne/40">
               <Eyebrow>Unfinished bridge</Eyebrow>

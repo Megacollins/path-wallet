@@ -17,7 +17,7 @@ import {
   type Quote,
   type TransferRecord,
 } from "@rome-protocol/sdk/bridge";
-import type { Hex } from "viem";
+import { createPublicClient, http, type Hex } from "viem";
 import type { BridgeSource, PathConfig } from "./assets.js";
 
 type Eip1193 = { request: (args: { method: string; params?: unknown[] | object }) => Promise<unknown> };
@@ -66,6 +66,12 @@ export interface PendingBurn {
   speed: "standard" | "fast";
   address: string;
   ts: number;
+  /**
+   * Set when the burn was sent by a relayer (a smart-account / EIP-7702 wallet): the
+   * bridge only registers burns whose sender IS the burning account, so "Finish" can
+   * never work for it — only Rome can settle it.
+   */
+  blocked?: boolean;
 }
 
 const PENDING_KEY = "path.pendingBridge.v1";
@@ -93,6 +99,24 @@ export function savePendingBurn(p: PendingBurn) {
 }
 export function clearPendingBurn(burnHash: string) {
   writePending(readPending().filter((x) => x.burnHash !== burnHash));
+}
+export function markPendingBlocked(burnHash: string) {
+  writePending(readPending().map((x) => (x.burnHash === burnHash ? { ...x, blocked: true } : x)));
+}
+
+/**
+ * Was this burn transaction sent by someone other than `account`? That is what a
+ * wallet-relayed smart-account (EIP-7702) transaction looks like — the burn event's
+ * depositor is the account, but tx.from is the relayer — and the bridge rejects it
+ * (`source-tx-mismatch`). null = couldn't tell (RPC trouble): callers must not block on it.
+ */
+export async function burnWasRelayed(rpcUrl: string, burnHash: string, account: string): Promise<boolean | null> {
+  try {
+    const tx = await createPublicClient({ transport: http(rpcUrl) }).getTransaction({ hash: burnHash as Hex });
+    return tx.from.toLowerCase() !== account.toLowerCase();
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -280,6 +304,7 @@ async function finishFromBurn(p: {
     rec = await registerTransferCompat({ quote, step1TxHash: burnHash, userSettleSig }, api);
   } catch (e) {
     // burn is confirmed but not registered — the caller must offer recovery
+    if ((e as { code?: string })?.code === "rome.bridge.source-tx-mismatch") markPendingBlocked(burnHash); // Finish can't fix this one
     throw new BridgeAfterBurnError(e, burnHash);
   }
   clearPendingBurn(burnHash); // registered: the bridge owns it from here
@@ -319,6 +344,16 @@ export async function resumeBridge(opts: {
   const { cfg, apiBase, provider, source, evmAddress, amount6, speed = "standard", burnHash, onPhase } = opts;
   const api = { base: apiBase.replace(/\/$/, "") };
   const say = (phase: string, extra?: Partial<BridgePhase>) => onPhase?.({ phase, ...extra });
+
+  // Don't ask the user to sign something the bridge is certain to reject: a burn sent by
+  // a relayer (not by this account) fails registration with source-tx-mismatch.
+  if ((await burnWasRelayed(source.rpcUrl, burnHash, evmAddress)) === true) {
+    markPendingBlocked(burnHash);
+    throw new BridgeAfterBurnError(
+      { code: "rome.bridge.source-tx-mismatch", status: 400, detail: "this burn was sent by a relayer, not by your account (a smart-account wallet), so the bridge can't verify it" },
+      burnHash,
+    );
+  }
 
   say("quoting");
   const quote = await requestQuote(inboundCctpQuoteRequest({ sourceChainId: source.chainId, romeChainId: cfg.chainId, amount: amount6, evmAddress, speed }), api);
