@@ -214,6 +214,39 @@ export async function ensureSourceChain(provider: Eip1193, source: BridgeSource)
   }
 }
 
+/** A node refusing a tx because its fee cap is below the current base fee ("max fee per gas less than block base fee"). */
+function isFeeTooLow(e: unknown): boolean {
+  const x = e as { message?: string; data?: { message?: string } };
+  return /max fee per gas less than (the )?block base fee|fee cap less than block base fee|maxFeePerGas.*baseFee|transaction underpriced|gas price below/i.test(`${x?.message ?? ""} ${x?.data?.message ?? ""}`);
+}
+
+/**
+ * Send a source-chain tx. If the node rejects the wallet's fee as below the current
+ * base fee, resend ONCE with an explicit, buffered fee. This happens for real on
+ * fast-moving chains: on Arbitrum Sepolia the base fee swings ~1.5% block to block and
+ * MetaMask priced a burn at 89,484,000 wei against a 89,910,000 base fee. A tx rejected
+ * at submission never reaches the mempool, so nothing was sent and resending can't
+ * double-send. The buffer (2× base fee) costs next to nothing on these chains.
+ */
+async function sendWithFeeRetry(provider: Eip1193, tx: { from: string; to: string; data: string; value?: string }): Promise<string> {
+  try {
+    return (await provider.request({ method: "eth_sendTransaction", params: [tx] })) as string;
+  } catch (e) {
+    if (!isFeeTooLow(e)) throw e;
+    const block = (await provider.request({ method: "eth_getBlockByNumber", params: ["latest", false] }).catch(() => null)) as { baseFeePerGas?: string } | null;
+    const base = BigInt(block?.baseFeePerGas ?? ((await provider.request({ method: "eth_gasPrice" })) as string));
+    let tip = 0n;
+    try {
+      tip = BigInt((await provider.request({ method: "eth_maxPriorityFeePerGas" })) as string);
+    } catch {
+      /* chain doesn't expose it — a zero tip is valid on these L2s */
+    }
+    const maxFeePerGas = base * 2n + tip;
+    const hex = (n: bigint) => `0x${n.toString(16)}`;
+    return (await provider.request({ method: "eth_sendTransaction", params: [{ ...tx, maxFeePerGas: hex(maxFeePerGas), maxPriorityFeePerGas: hex(tip) }] })) as string;
+  }
+}
+
 async function waitReceipt(provider: Eip1193, hash: string, timeoutMs = 180_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
@@ -260,10 +293,7 @@ export async function bridgeUsdcIn(opts: {
   for (let i = 0; i < txs.length; i++) {
     const { tx } = txs[i];
     say("signing", { detail: tx.description || `Approve & burn (${i + 1}/${txs.length})` });
-    const hash = (await provider.request({
-      method: "eth_sendTransaction",
-      params: [{ from: evmAddress, to: tx.to, data: tx.data, value: toHexQty(tx.value) }],
-    })) as string;
+    const hash = await sendWithFeeRetry(provider, { from: evmAddress, to: tx.to, data: tx.data, value: toHexQty(tx.value) });
     say("confirming-source", { txHash: hash });
     await waitReceipt(provider, hash);
     if (i === burnIdx) burnHash = hash;
