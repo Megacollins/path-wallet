@@ -7,7 +7,7 @@ import { ArrowRight, ExternalLink, Spline } from "lucide-react";
 import type { Hex } from "viem";
 import { parseAmountSafe } from "../../lib/format";
 import { readErc20Human } from "../../lib/assets";
-import { bridgeUsdcIn, getBridgeQuote, type BridgePhase, type QuotePreview } from "../../lib/bridge";
+import { bridgeUsdcIn, getBridgeQuote, loadPendingBurns, resumeBridge, type BridgePhase, type PendingBurn, type QuotePreview } from "../../lib/bridge";
 import { cfg } from "../config";
 import { useWallets } from "../wallet";
 import { useToast } from "../components/Toast";
@@ -109,36 +109,60 @@ export function Bridge() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [configured, busy, evm.address, sourceId, amount, speed]);
 
-  async function run() {
-    if (!source || amount6 == null || !evm.provider || !evm.address) return;
+  // Burns that happened but were never registered (failure / closed tab) — finishable.
+  const [pending, setPending] = useState<PendingBurn[]>([]);
+  const [recoverHash, setRecoverHash] = useState("");
+  const [recoverOpen, setRecoverOpen] = useState(false);
+  const refreshPending = () => setPending(evm.address ? loadPendingBurns(evm.address) : []);
+  useEffect(refreshPending, [evm.address, busy]);
+  const recoverHashValid = /^0x[0-9a-fA-F]{64}$/.test(recoverHash.trim());
+
+  /** Shared runner: busy state, live phase, success/failure toasts. */
+  async function execute(flow: () => Promise<{ id: string; landed: boolean }>, usdc: string) {
     setBusy(true);
     setPhase({ phase: "quoting" });
     try {
-      const res = await bridgeUsdcIn({
-        cfg,
-        apiBase: BRIDGE_API,
-        provider: evm.provider,
-        source,
-        evmAddress: evm.address as Hex,
-        amount6,
-        speed,
-        onPhase: setPhase,
-      });
+      const res = await flow();
       if (res.landed) {
-        toast.push({ kind: "success", title: "Bridged into Rome", message: `${amount} USDC is now available as gas.` });
+        toast.push({ kind: "success", title: "Bridged into Rome", message: `${usdc} USDC is now available as gas.` });
         await evm.switchToRome().catch(() => {});
       } else {
         toast.push({ kind: "info", title: "Still settling", message: "The bridge is finishing — your USDC will arrive shortly." });
       }
     } catch (e: any) {
       // Surface the real cause (SDK BridgeApiError carries status/code/detail).
-      const detail = [e?.status ? `HTTP ${e.status}` : "", e?.code, e?.detail || e?.shortMessage || e?.message || String(e)].filter(Boolean).join(" · ");
+      let detail = [e?.status ? `HTTP ${e.status}` : "", e?.code, e?.detail || e?.shortMessage || e?.message || String(e)].filter(Boolean).join(" · ");
       console.error("[bridge] failed:", e);
+      if (e?.burnHash) {
+        // Failed after the burn confirmed: the USDC is already burned — point at recovery.
+        setRecoverHash(e.burnHash);
+        setRecoverOpen(true);
+        detail += ` — the transfer wasn't registered. If your USDC was already burned on the source chain, nothing is lost: use "Finish a bridge" below to complete it (burn tx ${e.burnHash.slice(0, 10)}…).`;
+      }
       toast.push({ kind: "error", title: "Bridge failed", message: detail });
       setPhase({ phase: "failed", detail });
     } finally {
       setBusy(false);
     }
+  }
+
+  async function run() {
+    if (!source || amount6 == null || !evm.provider || !evm.address) return;
+    const provider = evm.provider;
+    const evmAddress = evm.address as Hex;
+    await execute(() => bridgeUsdcIn({ cfg, apiBase: BRIDGE_API, provider, source, evmAddress, amount6, speed, onPhase: setPhase }), amount);
+  }
+
+  /** Finish a burned-but-unregistered transfer: from a saved record, or a pasted burn tx hash + the selected chain/amount. */
+  async function finish(p: { burnHash: string; sourceChainId: number; amount6: bigint; speed: "standard" | "fast" }) {
+    const src = sources.find((s) => s.chainId === p.sourceChainId);
+    if (!src || !evm.provider || !evm.address) return;
+    const provider = evm.provider;
+    const evmAddress = evm.address as Hex;
+    await execute(
+      () => resumeBridge({ cfg, apiBase: BRIDGE_API, provider, source: src, evmAddress, amount6: p.amount6, speed: p.speed, burnHash: p.burnHash, onPhase: setPhase }),
+      (Number(p.amount6) / 1e6).toLocaleString(),
+    );
   }
 
   return (
@@ -167,6 +191,29 @@ export function Bridge() {
           </a>
         </Card>
       ) : (
+        <>
+        {/* A burn that was never registered — the USDC is in the air until this is finished. */}
+        {pending.map((p) => {
+          const src = sources.find((s) => s.chainId === p.sourceChainId);
+          return (
+            <Card key={p.burnHash} className="max-w-xl border-champagne/40">
+              <Eyebrow>Unfinished bridge</Eyebrow>
+              <p className="mt-2 text-sm text-parchment/80">
+                {(Number(p.amount6) / 1e6).toLocaleString()} USDC from {src?.name ?? `chain ${p.sourceChainId}`} was burned, but the transfer was never registered with the bridge.
+                Nothing is lost — finish it now (you'll sign one free message; no new burn, no gas).
+              </p>
+              <p className="mt-1 break-all font-mono text-[11px] text-parchment/40">burn tx {p.burnHash}</p>
+              <Button
+                className="mt-4 w-full sm:w-auto"
+                loading={busy}
+                disabled={busy || !src}
+                onClick={() => finish({ burnHash: p.burnHash, sourceChainId: p.sourceChainId, amount6: BigInt(p.amount6), speed: p.speed })}
+              >
+                Finish this bridge
+              </Button>
+            </Card>
+          );
+        })}
         <Card className="max-w-xl">
           <label className="label-eyebrow">From</label>
           <div className="mt-2 mb-4 flex flex-wrap gap-2">
@@ -273,6 +320,44 @@ export function Bridge() {
             Uses Circle CCTP via Rome's bridge. The attestation step takes a few minutes — keep this tab open. Get testnet USDC on the source chain from its faucet first.
           </p>
         </Card>
+
+        {/* Manual recovery — for a burn that failed before it was remembered (or in another browser). */}
+        <div className="max-w-xl">
+          <button onClick={() => setRecoverOpen((v) => !v)} className="text-xs text-parchment/50 underline decoration-parchment/20 underline-offset-4 hover:text-parchment/80" aria-expanded={recoverOpen}>
+            Bridge failed after you signed? Finish a bridge
+          </button>
+          {recoverOpen && (
+            <Card className="mt-3">
+              <p className="text-sm text-parchment/70">
+                If your wallet already burned USDC on the source chain but the bridge then errored, paste that <span className="text-parchment">burn transaction hash</span> (MetaMask → Activity →
+                the “Deposit for burn” transaction). Set the source chain and amount above to match that transfer, then finish it — nothing is burned or spent again.
+              </p>
+              <input
+                value={recoverHash}
+                onChange={(e) => setRecoverHash(e.target.value)}
+                placeholder="0x… burn transaction hash"
+                spellCheck={false}
+                autoCapitalize="none"
+                autoCorrect="off"
+                disabled={busy}
+                className="input-stone mt-3 font-mono text-base sm:text-sm"
+              />
+              {recoverHash && !recoverHashValid && <p className="mt-1 text-xs text-terracotta-300">That doesn't look like a transaction hash (0x + 64 hex characters).</p>}
+              <p className="mt-2 text-[11px] text-parchment/40">
+                Will finish: {amount || "—"} USDC from {source?.name ?? "—"} ({speed}).
+              </p>
+              <Button
+                className="mt-3 w-full sm:w-auto"
+                loading={busy}
+                disabled={busy || !recoverHashValid || !source || amount6 == null || amount6 <= 0n}
+                onClick={() => source && amount6 != null && finish({ burnHash: recoverHash.trim(), sourceChainId: source.chainId, amount6, speed })}
+              >
+                Finish this bridge
+              </Button>
+            </Card>
+          )}
+        </div>
+        </>
       )}
     </div>
   );
