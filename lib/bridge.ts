@@ -173,6 +173,21 @@ export async function ensureSourceChain(provider: Eip1193, source: BridgeSource)
       throw err;
     }
   }
+
+  // Confirm the wallet is REALLY on the source chain. `wallet_addEthereumChain`
+  // can resolve before the user approves MetaMask's follow-up "switch network"
+  // prompt; carrying on then sends the approve/burn to whatever chain the wallet
+  // is still on (e.g. Rome). Only Sepolia is built into MetaMask, so every other
+  // source chain goes through this add-then-switch path.
+  const deadline = Date.now() + 25_000;
+  for (;;) {
+    const current = parseInt((await provider.request({ method: "eth_chainId" })) as string, 16);
+    if (current === source.chainId) return;
+    if (Date.now() > deadline) {
+      throw new Error(`Your wallet is still on chain ${current}. Switch it to ${source.name} (chain ${source.chainId}) in MetaMask, then try again.`);
+    }
+    await sleep(1000);
+  }
 }
 
 async function waitReceipt(provider: Eip1193, hash: string, timeoutMs = 180_000) {

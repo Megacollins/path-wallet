@@ -21,6 +21,15 @@ const KNOWN_USDC: Record<number, `0x${string}`> = {
   10143: "0x534b2f3A21130d7a60830c2Df862319e593943A3", // Monad Testnet
 };
 
+// Source-chain RPCs the registry lists that no longer work. Polygon Amoy's
+// `rpc-amoy.polygon.technology` has no DNS records any more (verified against
+// Google DNS), so MetaMask couldn't add the chain and balances never loaded.
+// Replaced with a public RPC that answers browsers (CORS) and has the USDC
+// contract. Drop an entry once the registry itself is fixed.
+const RPC_OVERRIDES: Record<number, string> = {
+  80002: "https://polygon-amoy-bor-rpc.publicnode.com",
+};
+
 const chainId = process.env.CHAIN_ID ? Number(process.env.CHAIN_ID) : undefined;
 const cfg = loadConfig({ chainId, proxyUrl: process.env.PROXY_URL, solanaRpc: process.env.SOLANA_RPC });
 
@@ -42,7 +51,7 @@ const bridgeSources: BridgeSource[] = [];
 for (const s of rawSources) {
   if (!s?.chainId || seen.has(s.chainId)) continue;
   seen.add(s.chainId);
-  bridgeSources.push({ chainId: s.chainId, name: s.name, rpcUrl: s.rpcUrl, explorerUrl: s.explorerUrl, nativeSymbol: KNOWN_NATIVE[s.chainId] ?? "ETH", usdc: KNOWN_USDC[s.chainId] });
+  bridgeSources.push({ chainId: s.chainId, name: s.name, rpcUrl: RPC_OVERRIDES[s.chainId] ?? s.rpcUrl, explorerUrl: s.explorerUrl, nativeSymbol: KNOWN_NATIVE[s.chainId] ?? "ETH", usdc: KNOWN_USDC[s.chainId] });
 }
 
 const out = {
