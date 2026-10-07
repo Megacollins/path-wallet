@@ -1,5 +1,8 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/bridge-api/:path*", "destination": "https://bridge-api.devnet.romeprotocol.xyz/:path*" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }

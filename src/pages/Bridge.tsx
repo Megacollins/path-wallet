@@ -15,10 +15,18 @@ import { ConnectPrompt } from "../components/ConnectPrompt";
 import { Button, Card, Eyebrow, Spinner } from "../components/ui";
 
 // Rome's hosted bridge-api (the devnet default the `rome` CLI uses). The SDK
-// appends `/v1/...`, so this must be the ROOT (no trailing /v1). An env override
-// wins; we defensively strip any accidental trailing /v1 or slash.
+// appends `/v1/...`, so the base must be the ROOT (no trailing /v1) — we
+// defensively strip any accidental trailing /v1 or slash.
+//
+// The hosted API no longer sends CORS headers, so a browser can't call it from
+// our origin directly (every call dies as "Failed to fetch"). We reach it through
+// a SAME-ORIGIN proxy instead: `/bridge-api/*` is rewritten to the hosted API by
+// vercel.json in production and by the Vite dev/preview proxy locally. A custom
+// VITE_BRIDGE_API_URL (e.g. a self-hosted API with CORS enabled) is used as-is.
 const HOSTED_DEVNET_BRIDGE_API = "https://bridge-api.devnet.romeprotocol.xyz";
-const BRIDGE_API = ((import.meta.env.VITE_BRIDGE_API_URL as string | undefined)?.trim() || HOSTED_DEVNET_BRIDGE_API).replace(/\/(v1)?\/?$/, "");
+const BRIDGE_PROXY_BASE = "/bridge-api";
+const envBridgeBase = ((import.meta.env.VITE_BRIDGE_API_URL as string | undefined)?.trim() ?? "").replace(/\/(v1)?\/?$/, "");
+const BRIDGE_API = !envBridgeBase || envBridgeBase === HOSTED_DEVNET_BRIDGE_API ? BRIDGE_PROXY_BASE : envBridgeBase;
 
 const PHASE_LABEL: Record<string, string> = {
   quoting: "Getting a quote…",
