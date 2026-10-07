@@ -90,6 +90,27 @@ export async function readErc20Human(rpcUrl: string, token: Hex, owner: Hex, dec
   }
 }
 
+/**
+ * What an account is on a source chain, read straight from that chain's RPC: does it
+ * carry code (an EIP-7702-upgraded "smart account" or a contract wallet — wallets send
+ * those through a relayer, so tx.from != the burner and Rome's bridge rejects the
+ * burn), and how much native gas does it hold. Never throws; null = couldn't tell.
+ */
+export async function readAccountStatus(
+  rpcUrl: string,
+  owner: Hex,
+): Promise<{ hasCode: boolean | null; delegatedTo: Hex | null; nativeWei: bigint | null }> {
+  const client = createPublicClient({ transport: http(rpcUrl) });
+  const [code, bal] = await Promise.allSettled([client.getCode({ address: owner }), client.getBalance({ address: owner })]);
+  const c = code.status === "fulfilled" ? (code.value ?? "0x") : null;
+  return {
+    hasCode: c == null ? null : c !== "0x",
+    // 0xef0100 + 20-byte address is the EIP-7702 delegation designator
+    delegatedTo: c && c.toLowerCase().startsWith("0xef0100") ? (`0x${c.slice(8, 48)}` as Hex) : null,
+    nativeWei: bal.status === "fulfilled" ? bal.value : null,
+  };
+}
+
 /** EVM-lane balance for one token at `who`. Native gas via getBalance, else ERC-20. */
 async function readEvmBalance(cfg: RomeConfig, token: TokenMeta, who: Hex): Promise<number> {
   const client = evmClient(cfg);

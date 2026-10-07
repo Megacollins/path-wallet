@@ -6,7 +6,7 @@ import { motion } from "framer-motion";
 import { ArrowRight, ExternalLink, Spline } from "lucide-react";
 import type { Hex } from "viem";
 import { parseAmountSafe } from "../../lib/format";
-import { readErc20Human } from "../../lib/assets";
+import { readAccountStatus, readErc20Human } from "../../lib/assets";
 import { bridgeUsdcIn, getBridgeQuote, loadPendingBurns, resumeBridge, type BridgePhase, type PendingBurn, type QuotePreview } from "../../lib/bridge";
 import { cfg } from "../config";
 import { useWallets } from "../wallet";
@@ -57,7 +57,23 @@ export function Bridge() {
   const source = useMemo(() => sources.find((s) => s.chainId === sourceId) ?? sources[0], [sources, sourceId]);
   const amount6 = parseAmountSafe(amount, 6);
   const configured = BRIDGE_API.length > 0;
-  const canBridge = configured && !busy && Boolean(evm.address) && Boolean(source) && amount6 != null && amount6 > 0n;
+  // Pre-flight on the chosen source chain, BEFORE anything is signed: a smart account
+  // (relayed txs the bridge rejects) or an empty gas balance would burn/stall USDC.
+  const [acct, setAcct] = useState<Awaited<ReturnType<typeof readAccountStatus>> | null>(null);
+  useEffect(() => {
+    setAcct(null);
+    if (!evm.address || !source) return;
+    let cancelled = false;
+    readAccountStatus(source.rpcUrl, evm.address as Hex).then((a) => {
+      if (!cancelled) setAcct(a);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [evm.address, source, busy]);
+  const smartAccount = acct?.hasCode === true;
+  const noGas = acct?.nativeWei === 0n;
+  const canBridge = configured && !busy && Boolean(evm.address) && Boolean(source) && amount6 != null && amount6 > 0n && !smartAccount && !noGas;
 
   // The connected wallet's USDC balance on the selected source chain.
   const [srcBalance, setSrcBalance] = useState<number | null>(null);
@@ -136,8 +152,14 @@ export function Bridge() {
       if (e?.burnHash) {
         // Failed after the burn confirmed: the USDC is already burned — point at recovery.
         setRecoverHash(e.burnHash);
-        setRecoverOpen(true);
-        detail += ` — the transfer wasn't registered. If your USDC was already burned on the source chain, nothing is lost: use "Finish a bridge" below to complete it (burn tx ${e.burnHash.slice(0, 10)}…).`;
+        if (e?.code === "rome.bridge.source-tx-mismatch") {
+          // burner != tx sender: the wallet relayed the burn through a smart account (EIP-7702 / contract wallet).
+          // "Finish" can't fix this (the bridge re-checks the same transaction) — don't point at it.
+          detail += ` — your wallet sent the burn through a smart account, which the bridge can't verify. The USDC is burned, not lost: Circle's attestation is public and anyone can mint it, but the bridge won't register this transaction. Keep the burn tx hash (${e.burnHash}) and ask Rome to settle it; switch this account back to a standard account before bridging again.`;
+        } else {
+          setRecoverOpen(true);
+          detail += ` — the transfer wasn't registered. If your USDC was already burned on the source chain, nothing is lost: use "Finish a bridge" below to complete it (burn tx ${e.burnHash.slice(0, 10)}…).`;
+        }
       }
       toast.push({ kind: "error", title: "Bridge failed", message: detail });
       setPhase({ phase: "failed", detail });
@@ -230,6 +252,22 @@ export function Bridge() {
               </button>
             ))}
           </div>
+
+          {smartAccount && (
+            <div className="mb-4 rounded-xl border border-terracotta-500/40 bg-terracotta-500/10 p-3 text-sm text-terracotta-300" role="alert">
+              <p className="font-medium">Your account is a smart account on {source?.name}.</p>
+              <p className="mt-1 text-terracotta-300/90">
+                MetaMask upgraded it (EIP-7702), so it sends transactions through a relayer. Rome's bridge can't tie a relayed burn to your signature and rejects it — the USDC
+                would be burned but never credited. Bridge from another chain, or in MetaMask switch this account back to a standard account for {source?.name} (the menu
+                wording varies by version — look under the account's details / smart-account settings), then reload this page.
+              </p>
+            </div>
+          )}
+          {noGas && !smartAccount && (
+            <div className="mb-4 rounded-xl border border-terracotta-500/40 bg-terracotta-500/10 p-3 text-sm text-terracotta-300" role="alert">
+              You have no {source?.nativeSymbol ?? "gas token"} on {source?.name} to pay for the burn transaction. Get some from that chain's own faucet first (USDC alone isn't enough).
+            </div>
+          )}
 
           <div className="flex items-center gap-3 rounded-2xl border border-champagne/15 bg-stone-900/40 p-4">
             <div className="flex-1">
