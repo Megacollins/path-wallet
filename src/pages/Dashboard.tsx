@@ -6,7 +6,7 @@ import { ArrowUpRight, ArrowDownRight, RefreshCw, TrendingUp } from "lucide-reac
 import { formatUsd } from "../../lib/format";
 import type { Portfolio } from "../../lib/assets";
 import { DEMO_CHANGE_24H, DEMO_EVM_ADDRESS, DEMO_PORTFOLIO, DEMO_SOL_ADDRESS, DEMO_SPARKLINE, DEMO_SYNTHETIC } from "../../lib/demo";
-import { cfg } from "../config";
+import { useCfg } from "../network";
 import { useWallets } from "../wallet";
 import { useDemo } from "../demo";
 import { usePortfolio } from "../hooks/usePortfolio";
@@ -21,6 +21,7 @@ import { AnimatedNumber } from "../components/AnimatedNumber";
 import { Card, Eyebrow, EmptyState, Skeleton } from "../components/ui";
 
 export function Dashboard() {
+  const cfg = useCfg();
   const { evm, solana, canton, synthetic: realSynthetic, anyConnected: walletsConnected } = useWallets();
   const { data, loading, error, refresh } = usePortfolio();
   const { demo, disable } = useDemo();

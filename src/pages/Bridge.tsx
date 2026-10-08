@@ -19,7 +19,8 @@ import {
   type PendingBurn,
   type QuotePreview,
 } from "../../lib/bridge";
-import { cfg } from "../config";
+import { defaultChainId } from "../config";
+import { useNetwork } from "../network";
 import { useWallets } from "../wallet";
 import { useToast } from "../components/Toast";
 import { ConnectPrompt } from "../components/ConnectPrompt";
@@ -55,6 +56,7 @@ const PHASE_LABEL: Record<string, string> = {
 };
 
 export function Bridge() {
+  const { cfg, networks } = useNetwork();
   const { evm } = useWallets();
   const toast = useToast();
   const sources = cfg.bridgeSources ?? [];
@@ -134,7 +136,7 @@ export function Bridge() {
       clearTimeout(t);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [configured, busy, evm.address, sourceId, amount, speed]);
+  }, [configured, busy, evm.address, sourceId, amount, speed, cfg.chainId]);
 
   // Burns that happened but were never registered (failure / closed tab) — finishable.
   const [pending, setPending] = useState<PendingBurn[]>([]);
@@ -207,13 +209,16 @@ export function Bridge() {
   }
 
   /** Finish a burned-but-unregistered transfer: from a saved record, or a pasted burn tx hash + the selected chain/amount. */
-  async function finish(p: { burnHash: string; sourceChainId: number; amount6: bigint; speed: "standard" | "fast" }) {
+  async function finish(p: { burnHash: string; sourceChainId: number; amount6: bigint; speed: "standard" | "fast"; romeChainId?: number }) {
     const src = sources.find((s) => s.chainId === p.sourceChainId);
     if (!src || !evm.provider || !evm.address) return;
+    // The burn was bridging into a specific Rome chain; register against THAT one even if the user has switched networks since.
+    // (Burns saved before the switcher existed carry no chain: they were all the default, Hadrian.)
+    const rome = networks.find((n) => n.chainId === (p.romeChainId ?? defaultChainId)) ?? cfg;
     const provider = evm.provider;
     const evmAddress = evm.address as Hex;
     await execute(
-      () => resumeBridge({ cfg, apiBase: BRIDGE_API, provider, source: src, evmAddress, amount6: p.amount6, speed: p.speed, burnHash: p.burnHash, onPhase: setPhase }),
+      () => resumeBridge({ cfg: rome, apiBase: BRIDGE_API, provider, source: src, evmAddress, amount6: p.amount6, speed: p.speed, burnHash: p.burnHash, onPhase: setPhase }),
       (Number(p.amount6) / 1e6).toLocaleString(),
     );
   }
@@ -249,6 +254,7 @@ export function Bridge() {
         {pending.map((p) => {
           const src = sources.find((s) => s.chainId === p.sourceChainId);
           const usdc = (Number(p.amount6) / 1e6).toLocaleString();
+          const romeName = (networks.find((n) => n.chainId === (p.romeChainId ?? defaultChainId)) ?? cfg).chainName;
           if (p.blocked) {
             // Sent by a relayer: the bridge will never register it, so no Finish button — only Rome can settle it.
             return (
@@ -287,7 +293,7 @@ export function Bridge() {
             <Card key={p.burnHash} className="max-w-xl border-champagne/40">
               <Eyebrow>Unfinished bridge</Eyebrow>
               <p className="mt-2 text-sm text-parchment/80">
-                {(Number(p.amount6) / 1e6).toLocaleString()} USDC from {src?.name ?? `chain ${p.sourceChainId}`} was burned, but the transfer was never registered with the bridge.
+                {(Number(p.amount6) / 1e6).toLocaleString()} USDC from {src?.name ?? `chain ${p.sourceChainId}`} was burned, but the transfer into {romeName} was never registered with the bridge.
                 Nothing is lost — finish it now (you'll sign one free message; no new burn, no gas).
               </p>
               <p className="mt-1 break-all font-mono text-[11px] text-parchment/40">burn tx {p.burnHash}</p>
@@ -295,7 +301,7 @@ export function Bridge() {
                 className="mt-4 w-full sm:w-auto"
                 loading={busy}
                 disabled={busy || !src}
-                onClick={() => finish({ burnHash: p.burnHash, sourceChainId: p.sourceChainId, amount6: BigInt(p.amount6), speed: p.speed })}
+                onClick={() => finish({ burnHash: p.burnHash, sourceChainId: p.sourceChainId, amount6: BigInt(p.amount6), speed: p.speed, romeChainId: p.romeChainId })}
               >
                 Finish this bridge
               </Button>
@@ -448,13 +454,13 @@ export function Bridge() {
               />
               {recoverHash && !recoverHashValid && <p className="mt-1 text-xs text-terracotta-300">That doesn't look like a transaction hash (0x + 64 hex characters).</p>}
               <p className="mt-2 text-[11px] text-parchment/40">
-                Will finish: {amount || "—"} USDC from {source?.name ?? "—"} ({speed}).
+                Will finish: {amount || "—"} USDC from {source?.name ?? "—"} ({speed}) into {cfg.chainName}.
               </p>
               <Button
                 className="mt-3 w-full sm:w-auto"
                 loading={busy}
                 disabled={busy || !recoverHashValid || !source || amount6 == null || amount6 <= 0n}
-                onClick={() => source && amount6 != null && finish({ burnHash: recoverHash.trim(), sourceChainId: source.chainId, amount6, speed })}
+                onClick={() => source && amount6 != null && finish({ burnHash: recoverHash.trim(), sourceChainId: source.chainId, amount6, speed, romeChainId: cfg.chainId })}
               >
                 Finish this bridge
               </Button>

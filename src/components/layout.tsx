@@ -1,10 +1,10 @@
 // The responsive frame. Desktop (lg+): persistent left sidebar. Tablet: a
 // slide-in drawer. Mobile (<sm): top bar + bottom navigation. Built mobile-first.
 import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { LayoutGrid, SendHorizonal, Landmark, Compass, Settings2, Waypoints, Menu, X, type LucideIcon } from "lucide-react";
-import { cfg } from "../config";
+import { Check, ChevronsUpDown, LayoutGrid, SendHorizonal, Landmark, Compass, Settings2, Waypoints, Menu, X, type LucideIcon } from "lucide-react";
+import { useNetwork } from "../network";
 import { useDemo } from "../demo";
 import { PathMark, Wordmark } from "./Logo";
 import { WalletButton } from "./WalletControls";
@@ -41,14 +41,74 @@ export const NAV: NavItem[] = [
   { to: "/settings", label: "Settings", short: "Settings", icon: "settings" },
 ];
 
-/* -------------------------------------------------------- ChainBadge */
-function ChainBadge() {
+/* ------------------------------------------------- ChainBadge / switcher */
+// Shows the selected Rome chain and — when the registry publishes more than one — lets the user
+// switch. `placement` is which way the menu opens: up from the sidebar/drawer foot, down from the header.
+function ChainBadge({ placement = "down" }: { placement?: "up" | "down" }) {
+  const { cfg, networks, select } = useNetwork();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const switchable = networks.length > 1;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
   return (
-    <div className="chip w-full justify-center !py-1.5">
-      <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-glowgold" />
-      <span className="truncate">
-        {cfg.chainName} · <span className="text-parchment/50">{cfg.network}</span>
-      </span>
+    <div className="relative w-full" ref={ref}>
+      <button
+        type="button"
+        onClick={() => switchable && setOpen((v) => !v)}
+        aria-haspopup={switchable ? "listbox" : undefined}
+        aria-expanded={switchable ? open : undefined}
+        aria-label={switchable ? `Network: ${cfg.chainName}. Change network` : `Network: ${cfg.chainName}`}
+        className={`chip w-full justify-center !py-1.5 ${switchable ? "cursor-pointer hover:!border-champagne/60" : "cursor-default"}`}
+      >
+        <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-400 shadow-glowgold" />
+        <span className="truncate">
+          {cfg.chainName} · <span className="text-parchment/50">{cfg.network}</span>
+        </span>
+        {switchable && <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-parchment/50" aria-hidden="true" />}
+      </button>
+      {open && (
+        <ul role="listbox" aria-label="Rome networks" className={`card-marble absolute inset-x-0 z-50 !rounded-2xl p-1.5 ${placement === "up" ? "bottom-full mb-2" : "top-full mt-2"}`}>
+          {networks.map((n) => {
+            const active = n.chainId === cfg.chainId;
+            return (
+              <li key={n.chainId} role="option" aria-selected={active}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    select(n.chainId);
+                    setOpen(false);
+                  }}
+                  className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm transition ${active ? "bg-stone-800/70" : "hover:bg-stone-800/50"}`}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-parchment">{n.chainName}</span>
+                    <span className="block truncate text-[11px] text-parchment/45">
+                      {n.network} · chain {n.chainId}
+                    </span>
+                  </span>
+                  {active && <Check className="h-4 w-4 shrink-0 text-champagne" aria-hidden="true" />}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }
@@ -105,7 +165,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Link>
         <SidebarNav />
         <div className="mt-auto flex flex-col gap-3">
-          <ChainBadge />
+          <ChainBadge placement="up" />
           <p className="px-1 text-[11px] text-parchment/30 leading-relaxed">
             Path · a dual-lane smart wallet on <span className="text-gold-200/70">Rome</span>. EVM & Solana, one state.
           </p>
@@ -177,7 +237,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               </div>
               <SidebarNav onNavigate={() => setDrawer(false)} />
               <div className="mt-auto">
-                <ChainBadge />
+                <ChainBadge placement="up" />
               </div>
             </motion.aside>
           </>

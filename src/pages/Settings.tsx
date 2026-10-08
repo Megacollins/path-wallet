@@ -1,11 +1,12 @@
 // Settings — network facts (all registry-sourced), connected lanes, the token
 // catalog, and the modular SmartAccount status.
-import { cfg } from "../config";
+import { useCfg } from "../network";
 import { useWallets } from "../wallet";
 import { PathMark } from "../components/Logo";
 import { Card, Copyable, Eyebrow, TokenGlyph } from "../components/ui";
 
 export function Settings() {
+  const cfg = useCfg();
   const { evm, solana, synthetic } = useWallets();
 
   return (

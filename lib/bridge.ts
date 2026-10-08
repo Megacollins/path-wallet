@@ -67,6 +67,12 @@ export interface PendingBurn {
   address: string;
   ts: number;
   /**
+   * The Rome chain this burn was bridging INTO. A resume must register against the same chain even if
+   * the user has since switched networks. Absent on burns saved before the network switcher existed —
+   * those were all Rome Hadrian, the default chain.
+   */
+  romeChainId?: number;
+  /**
    * Set when the burn was sent by a relayer (a smart-account / EIP-7702 wallet): the
    * bridge only registers burns whose sender IS the burning account, so "Finish" can
    * never work for it — only Rome can settle it.
@@ -302,7 +308,7 @@ export async function bridgeUsdcIn(opts: {
 
   // The USDC is now burned. Remember it until registration succeeds, so a failure
   // (or a closed tab) from here on can be finished instead of stranding the funds.
-  savePendingBurn({ burnHash, sourceChainId: source.chainId, amount6: amount6.toString(), speed, address: evmAddress, ts: Date.now() });
+  savePendingBurn({ burnHash, sourceChainId: source.chainId, amount6: amount6.toString(), speed, address: evmAddress, ts: Date.now(), romeChainId: cfg.chainId });
 
   return finishFromBurn({ api, provider, evmAddress, quote, burnHash, say });
 }

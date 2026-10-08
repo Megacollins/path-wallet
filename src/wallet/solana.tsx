@@ -10,9 +10,10 @@ import { WalletReadyState } from "@solana/wallet-adapter-base";
 // barrel) so we don't bundle every other adapter — notably WalletConnect/@reown.
 import { PhantomWalletAdapter, PhantomWalletName } from "@solana/wallet-adapter-phantom";
 import type { Transaction } from "@solana/web3.js";
-import { cfg } from "../config";
+import { useCfg } from "../network";
 
 export function SolanaWalletProvider({ children }: { children: ReactNode }) {
+  const cfg = useCfg();
   const adapters = useMemo(() => [new PhantomWalletAdapter()], []);
   return (
     <ConnectionProvider endpoint={cfg.solanaRpc}>

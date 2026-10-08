@@ -6,7 +6,7 @@ import { isAddress, type Hex } from "viem";
 import { parseAmountSafe } from "../../lib/format";
 import type { TokenMeta } from "../../lib/assets";
 import * as rome from "../../lib/rome";
-import { cfg } from "../config";
+import { useCfg } from "../network";
 import { useWallets } from "../wallet";
 import { usePortfolio } from "../hooks/usePortfolio";
 import { useToast } from "../components/Toast";
@@ -16,6 +16,7 @@ import { Button, Card, Eyebrow, TokenGlyph } from "../components/ui";
 type Lane = "evm" | "solana";
 
 export function Send() {
+  const cfg = useCfg();
   const { evm, solana, anyConnected } = useWallets();
   const toast = useToast();
 
@@ -25,7 +26,7 @@ export function Send() {
 
   // Token options per lane.
   const evmTokens = cfg.tokens;
-  const solTokens = useMemo(() => cfg.tokens.filter((t) => t.kind === "spl_wrapper" && t.address.toLowerCase() === cfg.wusdc.toLowerCase()), []);
+  const solTokens = useMemo(() => cfg.tokens.filter((t) => t.kind === "spl_wrapper" && t.address.toLowerCase() === cfg.wusdc.toLowerCase()), [cfg]);
   const tokens = activeLane === "evm" ? evmTokens : solTokens;
 
   const [symbol, setSymbol] = useState<string>("wUSDC");

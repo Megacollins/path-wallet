@@ -5,7 +5,7 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ArrowRight, Sparkles, Wallet, Coins, Droplets, ShieldCheck, ExternalLink } from "lucide-react";
-import { cfg } from "../config";
+import { useCfg } from "../network";
 import { useDemo } from "../demo";
 import { PathMark, Wordmark } from "../components/Logo";
 import { GoldMedallion } from "../components/GoldMedallion";
@@ -22,6 +22,7 @@ const FEATURES = [
 ];
 
 export function Landing() {
+  const cfg = useCfg();
   const navigate = useNavigate();
   const { enable } = useDemo();
   const tryDemo = () => { enable(); navigate("/app"); };

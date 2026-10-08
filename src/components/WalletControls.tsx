@@ -3,12 +3,13 @@
 // nudges the EVM wallet onto the Rome chain when needed.
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
-import { cfg } from "../config";
+import { useCfg } from "../network";
 import { useWallets } from "../wallet";
 import { shortParty } from "../wallet/canton";
 import { Copyable } from "./ui";
 
 export function WalletButton() {
+  const cfg = useCfg();
   const { evm, solana, canton, anyConnected: romeConnected } = useWallets();
   // The button reflects every connected lane; `anyConnected` itself stays Rome-lanes-only.
   const anyConnected = romeConnected || canton.connected;

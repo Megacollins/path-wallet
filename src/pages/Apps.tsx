@@ -1,10 +1,11 @@
 // Quick actions into the Rome ecosystem — real, verified destinations only.
 import { motion } from "framer-motion";
 import { ECOSYSTEM, chainLinks, type EcosystemLink } from "../../lib/apps";
-import { cfg } from "../config";
+import { useCfg } from "../network";
 import { Card, Eyebrow } from "../components/ui";
 
 export function Apps() {
+  const cfg = useCfg();
   const links = [...ECOSYSTEM, ...chainLinks(cfg.explorerUrl)];
   return (
     <div className="space-y-6">

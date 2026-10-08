@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { formatUnits, parseUnits, type Hex } from "viem";
 import { parseAmountSafe } from "../../lib/format";
 import * as rome from "../../lib/rome";
-import { cfg } from "../config";
+import { useNetwork } from "../network";
 import { useWallets } from "../wallet";
 import { usePortfolio } from "../hooks/usePortfolio";
 import { useToast } from "../components/Toast";
@@ -17,7 +17,10 @@ type Lane = "evm" | "solana";
 export function Vault() {
   const { evm, solana, synthetic, anyConnected } = useWallets();
   const toast = useToast();
+  const { cfg, networks, select } = useNetwork();
   const vault = cfg.vault;
+  // The Vault is a deployed contract: it exists only on the chain(s) it was deployed to.
+  const vaultElsewhere = networks.find((n) => n.vault && n.chainId !== cfg.chainId);
 
   const [lane, setLane] = useState<Lane>("evm");
   const activeLane: Lane = lane === "evm" && !evm.address && solana.connected ? "solana" : lane;
@@ -45,7 +48,13 @@ export function Vault() {
     if (!vault) return;
     if (evm.address) setEvmBal(formatUnits(await rome.vaultBalanceOf(cfg, vault, evm.address), 6));
     if (synthetic) setSynthBal(formatUnits(await rome.vaultBalanceOf(cfg, vault, synthetic), 6));
-  }, [vault, evm.address, synthetic]);
+  }, [vault, evm.address, synthetic, cfg]);
+
+  // A different network is a different Vault: never show the previous network's balances.
+  useEffect(() => {
+    setEvmBal(null);
+    setSynthBal(null);
+  }, [cfg.chainId]);
 
   useEffect(() => {
     void refresh();
@@ -113,12 +122,27 @@ export function Vault() {
         <ConnectPrompt title="Connect to use the Vault" hint="Deposit from MetaMask, Phantom, or both — into one shared Vault." />
       ) : !vault ? (
         <Card className="border-terracotta-500/30">
-          <Eyebrow>No Vault deployed</Eyebrow>
-          <p className="mt-2 text-sm text-parchment/70">
-            Deploy the Vault, then set <code className="text-gold-200">VAULT_ADDRESS</code> in <code className="text-gold-200">.env</code> and
-            restart:
-          </p>
-          <pre className="mt-3 overflow-x-auto rounded-lg border border-gold/15 bg-stone-950/60 p-3 text-xs text-parchment/80">npm run deploy</pre>
+          {vaultElsewhere ? (
+            // A visitor on another network: point at where the Vault is, don't show developer instructions.
+            <>
+              <Eyebrow>No Vault on {cfg.chainName}</Eyebrow>
+              <p className="mt-2 text-sm text-parchment/70">
+                The Vault is a contract deployed on one chain, and it isn't on {cfg.chainName}. It lives on {vaultElsewhere.chainName}.
+              </p>
+              <Button className="mt-4" onClick={() => select(vaultElsewhere.chainId)}>
+                Switch to {vaultElsewhere.chainName}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Eyebrow>No Vault deployed</Eyebrow>
+              <p className="mt-2 text-sm text-parchment/70">
+                Deploy the Vault, then set <code className="text-gold-200">VAULT_ADDRESS</code> in <code className="text-gold-200">.env</code> and
+                restart:
+              </p>
+              <pre className="mt-3 overflow-x-auto rounded-lg border border-gold/15 bg-stone-950/60 p-3 text-xs text-parchment/80">npm run deploy</pre>
+            </>
+          )}
         </Card>
       ) : (
         <>

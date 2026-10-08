@@ -6,6 +6,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import { ToastProvider } from "./components/Toast";
 import { DemoProvider } from "./demo";
+import { NetworkProvider } from "./network";
 import "./index.css";
 
 // WalletProvider (wagmi/viem + @solana wallet-adapter) lives inside WalletApp,
@@ -13,11 +14,13 @@ import "./index.css";
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <BrowserRouter>
-      <DemoProvider>
-        <ToastProvider>
-          <App />
-        </ToastProvider>
-      </DemoProvider>
+      <NetworkProvider>
+        <DemoProvider>
+          <ToastProvider>
+            <App />
+          </ToastProvider>
+        </DemoProvider>
+      </NetworkProvider>
     </BrowserRouter>
   </React.StrictMode>,
 );

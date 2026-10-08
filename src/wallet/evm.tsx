@@ -5,7 +5,8 @@
 // the account, and keeping the wallet on the Rome network.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Hex } from "viem";
-import { cfg } from "../config";
+import { useCfg } from "../network";
+import type { PathConfig } from "../../lib/assets";
 
 export interface Eip1193Provider {
   request: (args: { method: string; params?: unknown[] | object }) => Promise<unknown>;
@@ -36,7 +37,7 @@ function hexChain(id: number): string {
   return `0x${id.toString(16)}`;
 }
 
-function romeChainParams() {
+function romeChainParams(cfg: PathConfig) {
   return {
     chainId: hexChain(cfg.chainId),
     chainName: cfg.chainName,
@@ -47,6 +48,7 @@ function romeChainParams() {
 }
 
 export function EvmProvider({ children }: { children: ReactNode }) {
+  const cfg = useCfg(); // the selected network: what "on Rome" means, and which chain to switch the wallet to
   const providersRef = useRef<Map<string, Eip6963Detail>>(new Map());
   const [available, setAvailable] = useState(false);
   const [provider, setProvider] = useState<Eip1193Provider | null>(null);
@@ -92,13 +94,13 @@ export function EvmProvider({ children }: { children: ReactNode }) {
     } catch (err: any) {
       // 4902 = chain unknown to the wallet → add it, then it's selected.
       if (err?.code === 4902 || /unrecognized|not been added/i.test(err?.message ?? "")) {
-        await p.request({ method: "wallet_addEthereumChain", params: [romeChainParams()] });
+        await p.request({ method: "wallet_addEthereumChain", params: [romeChainParams(cfg)] });
       } else {
         throw err;
       }
     }
     setChainId(cfg.chainId);
-  }, [provider, pickProvider]);
+  }, [provider, pickProvider, cfg]);
 
   const connect = useCallback(async () => {
     setConnecting(true);
@@ -115,7 +117,7 @@ export function EvmProvider({ children }: { children: ReactNode }) {
     } finally {
       setConnecting(false);
     }
-  }, [pickProvider, bindEvents, switchToRome]);
+  }, [pickProvider, bindEvents, switchToRome, cfg]);
 
   const disconnect = useCallback(() => {
     setAddress(null);
@@ -134,7 +136,7 @@ export function EvmProvider({ children }: { children: ReactNode }) {
       disconnect,
       switchToRome,
     }),
-    [available, address, chainId, connecting, provider, connect, disconnect, switchToRome],
+    [available, address, chainId, connecting, provider, connect, disconnect, switchToRome, cfg.chainId],
   );
 
   return <EvmContext.Provider value={value}>{children}</EvmContext.Provider>;
