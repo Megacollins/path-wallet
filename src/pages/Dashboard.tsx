@@ -83,7 +83,8 @@ export function Dashboard() {
           </div>
 
           {/* Wallet cards */}
-          <div className="grid gap-5 sm:grid-cols-2">
+          {/* minmax(0,1fr): the card's aspect-ratio + min-height would otherwise force a ~300px column on very narrow screens */}
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-5 sm:grid-cols-2">
             <WalletCard
               variant="black"
               glyph="🦊"
