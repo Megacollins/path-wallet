@@ -44,7 +44,7 @@ export const NAV: NavItem[] = [
 /* ------------------------------------------------- ChainBadge / switcher */
 // Shows the selected Rome chain and — when the registry publishes more than one — lets the user
 // switch. `placement` is which way the menu opens: up from the sidebar/drawer foot, down from the header.
-function ChainBadge({ placement = "down" }: { placement?: "up" | "down" }) {
+function ChainBadge({ placement = "down", compact = false }: { placement?: "up" | "down"; compact?: boolean }) {
   const { cfg, networks, select } = useNetwork();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -67,23 +67,28 @@ function ChainBadge({ placement = "down" }: { placement?: "up" | "down" }) {
   }, [open]);
 
   return (
-    <div className="relative w-full" ref={ref}>
+    <div className={compact ? "relative" : "relative w-full"} ref={ref}>
       <button
         type="button"
         onClick={() => switchable && setOpen((v) => !v)}
         aria-haspopup={switchable ? "listbox" : undefined}
         aria-expanded={switchable ? open : undefined}
         aria-label={switchable ? `Network: ${cfg.chainName}. Change network` : `Network: ${cfg.chainName}`}
-        className={`chip w-full justify-center !py-1.5 ${switchable ? "cursor-pointer hover:!border-champagne/60" : "cursor-default"}`}
+        className={`chip !py-1.5 ${compact ? "" : "w-full justify-center"} ${switchable ? "cursor-pointer hover:!border-champagne/60" : "cursor-default"}`}
       >
         <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-400 shadow-glowgold" />
-        <span className="truncate">
-          {cfg.chainName} · <span className="text-parchment/50">{cfg.network}</span>
-        </span>
+        {compact ? (
+          // phone header: dot + chevron only below 380px so Connect (and the Demo chip) always fit
+          <span className="hidden truncate min-[380px]:inline">{cfg.chainName.replace(/^Rome /, "")}</span>
+        ) : (
+          <span className="truncate">
+            {cfg.chainName} · <span className="text-parchment/50">{cfg.network}</span>
+          </span>
+        )}
         {switchable && <ChevronsUpDown className="h-3.5 w-3.5 shrink-0 text-parchment/50" aria-hidden="true" />}
       </button>
       {open && (
-        <ul role="listbox" aria-label="Rome networks" className={`card-marble absolute inset-x-0 z-50 !rounded-2xl p-1.5 ${placement === "up" ? "bottom-full mb-2" : "top-full mt-2"}`}>
+        <ul role="listbox" aria-label="Rome networks" className={`card-marble absolute z-50 !rounded-2xl p-1.5 ${compact ? "left-0 w-64 max-w-[calc(100vw-2rem)]" : "inset-x-0"} ${placement === "up" ? "bottom-full mb-2" : "top-full mt-2"}`}>
           {networks.map((n) => {
             const active = n.chainId === cfg.chainId;
             return (
@@ -185,7 +190,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <button
               onClick={() => setDrawer(true)}
-              className="lg:hidden grid h-10 w-10 shrink-0 place-items-center rounded-2xl border border-champagne/20 text-parchment/80 hover:bg-stone-800/60"
+              className="hidden sm:grid lg:hidden h-10 w-10 shrink-0 place-items-center rounded-2xl border border-champagne/20 text-parchment/80 hover:bg-stone-800/60"
               aria-label="Open menu"
             >
               <Menu className="h-5 w-5" strokeWidth={1.6} />
@@ -194,6 +199,10 @@ export function AppShell({ children }: { children: ReactNode }) {
               {/* mark-only below 380px so the wallet controls always fit */}
               <Wordmark size={30} textClassName="hidden min-[380px]:inline" />
             </Link>
+            {/* phones: the bottom bar is the page nav, so the header carries the network switch instead of a duplicate menu */}
+            <div className="sm:hidden">
+              <ChainBadge compact />
+            </div>
             <div className="hidden lg:block">
               <ChainBadge />
             </div>
