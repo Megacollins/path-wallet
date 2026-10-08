@@ -8,6 +8,71 @@ type Sdk = typeof import("@canton-network/dapp-sdk");
 let sdkPromise: Promise<Sdk> | null = null;
 const loadSdk = () => (sdkPromise ??= import("@canton-network/dapp-sdk"));
 
+// Which wallets the picker can offer, beyond whatever announces itself in the browser:
+//  - Console Wallet's Chrome extension, registered explicitly so it is probed even when it
+//    doesn't announce (the id comes from its Chrome Web Store listing). Only wallets that
+//    actually answer the handshake make it into the picker, so nothing phantom is listed.
+//  - WalletConnect (mobile / cross-device wallets), only when a project id is configured.
+//  - Remote wallet gateways: the picker lets the user type a gateway URL.
+const CONSOLE_WALLET_EXTENSION_ID = "lpnfhpbpmlobjlgkdmnjieeihjmihhjd";
+const WC_PROJECT_ID = (import.meta.env.VITE_WC_PROJECT_ID as string | undefined)?.trim() || "";
+
+async function initSdk(sdk: Sdk) {
+  const additionalAdapters = [
+    new sdk.ExtensionAdapter({
+      providerId: `browser:ext:${CONSOLE_WALLET_EXTENSION_ID}` as never,
+      name: "Console Wallet",
+      description: "Connect via the Console Wallet browser extension",
+      target: CONSOLE_WALLET_EXTENSION_ID,
+    }),
+  ];
+  if (WC_PROJECT_ID) {
+    try {
+      additionalAdapters.push(
+        sdk.WalletConnectAdapter.create({
+          projectId: WC_PROJECT_ID,
+          metadata: { name: "Path", description: "Dual-lane smart wallet on Rome", url: window.location.origin, icons: [`${window.location.origin}/favicon.svg`] },
+        }) as never,
+      );
+    } catch {
+      /* a bad WalletConnect config must never stop extension / gateway wallets from connecting */
+    }
+  }
+  // defaultAdapters: [] — the SDK's built-in list is a single dev gateway on
+  // http://localhost:3030, which it would probe on every init (and Chrome may prompt for
+  // local-network access). enableSuggestedWallets: false — its only suggestion is an
+  // *install link* for "Send Connect", which reads as a wallet that then "refuses to connect".
+  await sdk.init({ defaultAdapters: [], additionalAdapters, enableSuggestedWallets: false });
+}
+
+export interface AnnouncedWallet {
+  id: string;
+  name: string;
+}
+export interface WalletScan {
+  /** Browser wallets that answered `canton:requestProvider` with `canton:announceProvider`. */
+  announced: AnnouncedWallet[];
+  /** A legacy `window.canton` provider is present. */
+  injected: boolean;
+}
+
+/** Ask the page which Canton wallets are present (the same announce handshake the SDK uses). */
+function scanWallets(timeoutMs = 600): Promise<WalletScan> {
+  return new Promise((resolve) => {
+    const found = new Map<string, AnnouncedWallet>();
+    const onAnnounce = (e: Event) => {
+      const d = (e as CustomEvent<{ id?: string; name?: string }>).detail;
+      if (d?.id && d?.name) found.set(d.id, { id: d.id, name: d.name });
+    };
+    window.addEventListener("canton:announceProvider", onAnnounce);
+    window.dispatchEvent(new CustomEvent("canton:requestProvider", { detail: {} }));
+    setTimeout(() => {
+      window.removeEventListener("canton:announceProvider", onAnnounce);
+      resolve({ announced: [...found.values()], injected: Boolean((window as unknown as { canton?: unknown }).canton) });
+    }, timeoutMs);
+  });
+}
+
 /** A Canton "wallet" as the dApp API reports it: one party the user authorised us to see. */
 export interface CantonAccount {
   partyId: string;
@@ -27,6 +92,11 @@ export interface CantonState {
   primary: CantonAccount | null;
   networkId: string | null;
   error: string | null;
+  /** What the last wallet scan found in this browser (null until a scan has run). */
+  detected: WalletScan | null;
+  /** Whether WalletConnect (mobile / cross-device wallets) is configured for this build. */
+  walletConnect: boolean;
+  scan: () => Promise<void>;
   connect: () => Promise<void>;
   disconnect: () => Promise<void>;
   ledgerApi: (req: CantonLedgerRequest) => Promise<unknown>;
@@ -125,11 +195,7 @@ export function CantonProvider({ children }: { children: ReactNode }) {
     (async () => {
       try {
         const sdk = await loadSdk();
-        // defaultAdapters: [] — the SDK's built-in list is a single dev gateway on
-        // http://localhost:3030, which it would probe on every init (and Chrome may prompt
-        // for local-network access). Announced browser wallets are still discovered, and
-        // the picker lets the user enter a gateway URL by hand.
-        await sdk.init({ defaultAdapters: [] });
+        await initSdk(sdk);
         const c = await sdk.isConnected();
         if (cancelled) return;
         if (c.isConnected) {
@@ -150,7 +216,7 @@ export function CantonProvider({ children }: { children: ReactNode }) {
     setError(null);
     try {
       const sdk = await loadSdk();
-      await sdk.init({ defaultAdapters: [] });
+      await initSdk(sdk);
       await sdk.connect(); // opens the SDK's wallet picker and runs the wallet's own auth flow
       await refresh();
       await subscribe(sdk);
@@ -178,11 +244,14 @@ export function CantonProvider({ children }: { children: ReactNode }) {
     return sdk.ledgerApi(req);
   }, []);
 
+  const [detected, setDetected] = useState<WalletScan | null>(null);
+  const scan = useCallback(async () => setDetected(await scanWallets()), []);
+
   const primary = useMemo(() => accounts.find((a) => a.primary) ?? accounts[0] ?? null, [accounts]);
 
   const value = useMemo<CantonState>(
-    () => ({ connected, connecting, accounts, primary, networkId, error, connect, disconnect, ledgerApi }),
-    [connected, connecting, accounts, primary, networkId, error, connect, disconnect, ledgerApi],
+    () => ({ connected, connecting, accounts, primary, networkId, error, detected, walletConnect: Boolean(WC_PROJECT_ID), scan, connect, disconnect, ledgerApi }),
+    [connected, connecting, accounts, primary, networkId, error, detected, scan, connect, disconnect, ledgerApi],
   );
 
   return <CantonContext.Provider value={value}>{children}</CantonContext.Provider>;

@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
 
@@ -22,10 +22,6 @@ const stubWalletConnectForCantonSdk = (): Plugin => ({
   },
 });
 
-// @solana/web3.js + wallet-adapter reference Node globals (`Buffer`, `global`,
-// `process`) in the browser bundle. The polyfill plugin injects real shims so
-// they resolve cleanly in both dev and build — without it Vite externalizes
-// "buffer" and Buffer is undefined at runtime.
 // Rome's hosted bridge-api sends no CORS headers, so the browser reaches it via
 // this same-origin proxy (/bridge-api/* → the hosted API). Production does the
 // same with the rewrite in vercel.json.
@@ -37,22 +33,32 @@ const bridgeProxy = {
   },
 };
 
-export default defineConfig({
-  plugins: [
-    react(),
-    nodePolyfills({
-      globals: { Buffer: true, global: true, process: true },
-    }),
-    stubWalletConnectForCantonSdk(),
-  ],
-  server: { proxy: bridgeProxy },
-  preview: { proxy: bridgeProxy },
-  build: {
-    // WalletApp.tsx (wagmi + viem + @solana/wallet-adapter + the Rome SDK) is
-    // a legitimately heavy chunk — it's lazy-loaded and only fetched once a
-    // visitor leaves the marketing pages, so 500kB isn't the right bar for it.
-    // The Canton dApp SDK (+ its wallet-picker UI) is a second lazy chunk (~810kB),
-    // fetched only when someone connects a Canton wallet or has a saved session.
-    chunkSizeWarningLimit: 900,
-  },
+export default defineConfig(({ mode }) => {
+  // With a WalletConnect project id configured, the Canton picker offers WalletConnect and the
+  // real client is bundled (lazy chunk); without one, it is stubbed out of production builds.
+  const walletConnectEnabled = Boolean(loadEnv(mode, process.cwd(), "VITE_").VITE_WC_PROJECT_ID?.trim());
+  return {
+    plugins: [
+      react(),
+      // @solana/web3.js + wallet-adapter reference Node globals (`Buffer`, `global`,
+      // `process`) in the browser bundle. The polyfill plugin injects real shims so
+      // they resolve cleanly in both dev and build — without it Vite externalizes
+      // "buffer" and Buffer is undefined at runtime.
+      nodePolyfills({
+        globals: { Buffer: true, global: true, process: true },
+      }),
+      ...(walletConnectEnabled ? [] : [stubWalletConnectForCantonSdk()]),
+    ],
+    server: { proxy: bridgeProxy },
+    preview: { proxy: bridgeProxy },
+    build: {
+      // WalletApp.tsx (wagmi + viem + @solana/wallet-adapter + the Rome SDK) is
+      // a legitimately heavy chunk — it's lazy-loaded and only fetched once a
+      // visitor leaves the marketing pages, so 500kB isn't the right bar for it.
+      // The Canton dApp SDK (+ its wallet-picker UI) is a second lazy chunk (~810kB,
+      // ~1.2MB with WalletConnect), fetched only when someone connects a Canton wallet
+      // or has a saved session.
+      chunkSizeWarningLimit: 1300,
+    },
+  };
 });

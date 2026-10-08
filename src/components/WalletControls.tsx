@@ -177,6 +177,13 @@ function LaneRow({
  *  finds extension wallets and lets the user enter a gateway URL, so Connect is always offered. */
 function CantonRow() {
   const { canton } = useWallets();
+  // Look for wallets when the menu opens, so "why isn't my wallet listed?" has a visible answer.
+  const { scan, connected } = canton;
+  useEffect(() => {
+    if (!connected) void scan();
+  }, [scan, connected]);
+  const found = canton.detected;
+  const foundNames = found ? [...found.announced.map((w) => w.name), ...(found.injected ? ["an injected wallet"] : [])] : [];
   return (
     <div>
       <div className="flex items-center gap-3">
@@ -204,6 +211,13 @@ function CantonRow() {
           </button>
         )}
       </div>
+      {!canton.connected && found && (
+        <p className="mt-2 text-[11px] leading-relaxed text-parchment/45">
+          {foundNames.length
+            ? `Found in this browser: ${foundNames.join(", ")}.`
+            : `No Canton wallet announced itself in this browser (Console Wallet is also checked directly when you press Connect). Use a CIP-0103 wallet extension, or enter a wallet-gateway URL in the picker${canton.walletConnect ? ", or choose WalletConnect for a mobile wallet" : ""}.`}
+        </p>
+      )}
       {canton.error && <p className="mt-2 break-words text-[11px] text-terracotta-300">{canton.error}</p>}
     </div>
   );
