@@ -5,10 +5,13 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 import { cfg } from "../config";
 import { useWallets } from "../wallet";
+import { shortParty } from "../wallet/canton";
 import { Copyable } from "./ui";
 
 export function WalletButton() {
-  const { evm, solana, anyConnected } = useWallets();
+  const { evm, solana, canton, anyConnected: romeConnected } = useWallets();
+  // The button reflects every connected lane; `anyConnected` itself stays Rome-lanes-only.
+  const anyConnected = romeConnected || canton.connected;
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -20,7 +23,8 @@ export function WalletButton() {
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  const count = (evm.address ? 1 : 0) + (solana.connected ? 1 : 0);
+  const count = (evm.address ? 1 : 0) + (solana.connected ? 1 : 0) + (canton.connected ? 1 : 0);
+  const laneLabel = evm.address && solana.connected && !canton.connected ? "Both lanes" : `${count} lane${count === 1 ? "" : "s"}`;
   const needsNetwork = Boolean(evm.address) && !evm.isRome;
 
   return (
@@ -36,8 +40,9 @@ export function WalletButton() {
             <span className="flex -space-x-1.5">
               {evm.address && <Avatar glyph="🦊" warn={needsNetwork} />}
               {solana.connected && <Avatar glyph="👻" />}
+              {canton.connected && <Avatar glyph="🔷" />}
             </span>
-            <span className="hidden sm:inline text-sm">{count === 2 ? "Both lanes" : "1 lane"}</span>
+            <span className="hidden sm:inline text-sm">{laneLabel}</span>
           </span>
         ) : (
           <span className="flex items-center gap-2">
@@ -83,8 +88,10 @@ export function WalletButton() {
               onConnect={() => solana.connect()}
               onDisconnect={() => solana.disconnect()}
             />
+            <div className="rule-gold my-3" />
+            <CantonRow />
             <p className="text-[11px] text-parchment/40 mt-3 leading-relaxed">
-              Both wallets drive the <span className="text-gold-200">same</span> Rome state. No faucet — bridge USDC in for gas.
+              MetaMask and Phantom drive the <span className="text-gold-200">same</span> Rome state. No faucet — bridge USDC in for gas. Canton is a separate ledger: your own Canton wallet signs, Path only reads.
             </p>
           </motion.div>
         )}
@@ -162,6 +169,42 @@ function LaneRow({
           Install
         </a>
       )}
+    </div>
+  );
+}
+
+/** The Canton lane. Unlike the other two there's no "install" state: the SDK's own picker
+ *  finds extension wallets and lets the user enter a gateway URL, so Connect is always offered. */
+function CantonRow() {
+  const { canton } = useWallets();
+  return (
+    <div>
+      <div className="flex items-center gap-3">
+        <div className="grid place-items-center h-9 w-9 rounded-full bg-stone-800 border border-gold/25 text-lg shrink-0">🔷</div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-x-2">
+            <span className="text-sm text-parchment">Canton</span>
+            <span className="text-[10px] uppercase tracking-widest text-parchment/40">Daml ledger</span>
+          </div>
+          {canton.connected && canton.primary ? (
+            <Copyable text={canton.primary.partyId} display={shortParty(canton.primary.partyId)} />
+          ) : canton.connected ? (
+            <span className="text-xs text-parchment/40">Connected — no account shared</span>
+          ) : (
+            <span className="text-xs text-parchment/40">Not connected</span>
+          )}
+        </div>
+        {canton.connected ? (
+          <button onClick={() => void canton.disconnect()} className="btn-ghost shrink-0 whitespace-nowrap !px-3 !py-1.5 text-xs">
+            Disconnect
+          </button>
+        ) : (
+          <button onClick={() => void canton.connect()} className="btn-ghost shrink-0 whitespace-nowrap !px-3 !py-1.5 text-xs" disabled={canton.connecting}>
+            {canton.connecting ? "…" : "Connect"}
+          </button>
+        )}
+      </div>
+      {canton.error && <p className="mt-2 break-words text-[11px] text-terracotta-300">{canton.error}</p>}
     </div>
   );
 }

@@ -15,6 +15,7 @@
     "typecheck": "npm run gen-config && tsc --noEmit"
   },
   "dependencies": {
+    "@canton-network/dapp-sdk": "^1.7.1",
     "@rome-protocol/registry": "github:rome-protocol/rome-registry#v0.1.0",
     "@rome-protocol/sdk": "github:rome-protocol/rome-sdk-ts#v0.2.1",
     "@solana/spl-token": "^0.4.9",
@@ -37,6 +38,7 @@
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",
+    "@walletconnect/sign-client": "^2.26.0",
     "autoprefixer": "^10.5.4",
     "dotenv": "^16.4.5",
     "postcss": "^8.5.22",

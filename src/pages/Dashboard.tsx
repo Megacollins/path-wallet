@@ -13,6 +13,7 @@ import { usePortfolio } from "../hooks/usePortfolio";
 import { ConnectPrompt } from "../components/ConnectPrompt";
 import { WalletCard } from "../components/WalletCard";
 import { TokenTile } from "../components/TokenTile";
+import { CantonHoldings } from "../components/CantonHoldings";
 import { SculptureWidget } from "../components/SculptureWidget";
 import { StarterGasBanner } from "../components/FaucetButton";
 import { AllocationRing, Sparkline } from "../components/Analytics";
@@ -20,7 +21,7 @@ import { AnimatedNumber } from "../components/AnimatedNumber";
 import { Card, Eyebrow, EmptyState, Skeleton } from "../components/ui";
 
 export function Dashboard() {
-  const { evm, solana, synthetic: realSynthetic, anyConnected: walletsConnected } = useWallets();
+  const { evm, solana, canton, synthetic: realSynthetic, anyConnected: walletsConnected } = useWallets();
   const { data, loading, error, refresh } = usePortfolio();
   const { demo, disable } = useDemo();
 
@@ -57,7 +58,11 @@ export function Dashboard() {
       </div>
 
       {!anyConnected ? (
-        <ConnectPrompt />
+        <>
+          <ConnectPrompt />
+          {/* Canton alone is enough to see its holdings, even with no MetaMask/Phantom connected */}
+          {canton.connected && <CantonHoldings />}
+        </>
       ) : (
         <>
           {needsGas && evm.address && <StarterGasBanner address={evm.address} onFunded={refresh} />}
@@ -154,6 +159,9 @@ export function Dashboard() {
               </Card>
             )}
           </section>
+
+          {/* Canton lane (read-only): the user's own Canton wallet, a separate ledger from Rome */}
+          {canton.connected && !demo && <CantonHoldings />}
         </>
       )}
     </div>

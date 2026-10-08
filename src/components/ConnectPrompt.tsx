@@ -15,7 +15,7 @@ export function ConnectPrompt({
   hint?: string;
   showDemo?: boolean;
 }) {
-  const { evm, solana } = useWallets();
+  const { evm, solana, canton } = useWallets();
   const { enable } = useDemo();
   return (
     <Card className="relative overflow-hidden hover-glow">
@@ -53,7 +53,20 @@ export function ConnectPrompt({
               Install Phantom
             </a>
           )}
+          {/* Optional, read-only for now: your own Canton wallet (a separate ledger from Rome). */}
+          {canton.connected ? (
+            <span className="chip">🔷 Canton connected</span>
+          ) : (
+            <button className="btn-ghost" onClick={() => void canton.connect()} disabled={canton.connecting}>
+              <Wallet className="h-4 w-4" /> {canton.connecting ? "Connecting…" : "Connect Canton"}
+            </button>
+          )}
         </div>
+        {canton.error && (
+          <p className="max-w-md break-words text-xs text-terracotta-300" role="alert">
+            Canton: {canton.error}
+          </p>
+        )}
         {showDemo && (
           <button onClick={enable} className="group inline-flex items-center gap-2 text-sm text-champagne-100/80 hover:text-champagne-100 transition">
             <Sparkles className="h-4 w-4 text-champagne" />
