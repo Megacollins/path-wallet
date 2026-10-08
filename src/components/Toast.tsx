@@ -40,7 +40,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const update = useCallback(
     (id: number, patch: Partial<Omit<Toast, "id">>) => {
       setToasts((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)));
-      if (patch.kind && patch.kind !== "pending") setTimeout(() => dismiss(id), 6000);
+      // Failures stay long enough to actually read; they explain what to do next.
+      if (patch.kind && patch.kind !== "pending") setTimeout(() => dismiss(id), patch.kind === "error" ? 20000 : 6000);
     },
     [dismiss],
   );

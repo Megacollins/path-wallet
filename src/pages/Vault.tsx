@@ -72,22 +72,38 @@ export function Vault() {
     }
   }
 
+  // Fail before anything is wrapped/funded if the token is rejecting approvals/transfers.
+  const guard = async (from: Hex) => {
+    const why = await rome.wrapperBlocked(cfg, from);
+    if (why) throw new Error(why);
+  };
+
   const evmDeposit = () =>
     run(
       "deposit",
       async () => {
+        await guard(evm.address!);
         await rome.evmWrapToWusdc(evm.provider!, evm.address!, parseUnits(amount, 18));
         await rome.evmApprove(evm.provider!, evm.address!, cfg, vault!, amt!);
         await rome.evmDeposit(evm.provider!, evm.address!, vault!, amt!);
       },
       `Deposit ${amount} wUSDC (EVM)`,
     );
-  const evmWithdraw = () => run("withdraw", () => rome.evmWithdraw(evm.provider!, evm.address!, vault!, amt!), `Withdraw ${amount} wUSDC (EVM)`);
+  const evmWithdraw = () =>
+    run(
+      "withdraw",
+      async () => {
+        await guard(evm.address!);
+        await rome.evmWithdraw(evm.provider!, evm.address!, vault!, amt!);
+      },
+      `Withdraw ${amount} wUSDC (EVM)`,
+    );
 
   const solDeposit = () =>
     run(
       "deposit",
       async () => {
+        await guard(synthetic!);
         await rome.solanaFund(cfg, solana.publicKey!, solana.signTransaction!, amt!);
         await rome.solanaApprove(cfg, solana.publicKey!, solana.signTransaction!, vault!, amt!);
         await rome.solanaDeposit(cfg, solana.publicKey!, solana.signTransaction!, vault!, amt!);
@@ -98,6 +114,7 @@ export function Vault() {
     run(
       "withdraw",
       async () => {
+        await guard(synthetic!);
         await rome.solanaWithdraw(cfg, solana.publicKey!, solana.signTransaction!, vault!, amt!);
         await rome.solanaSweep(cfg, solana.publicKey!, solana.signTransaction!, amt!);
       },

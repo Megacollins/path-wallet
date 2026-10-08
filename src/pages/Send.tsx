@@ -55,6 +55,12 @@ export function Send() {
     amountBase > 0n &&
     (activeLane === "evm" ? evmReady : solana.connected && Boolean(solana.signTransaction));
 
+  // Wrapped tokens can reject every transfer chain-side; say so before the wallet prompt, not after.
+  async function requireUsable(from: Hex, tokenAddress?: Hex) {
+    const why = await rome.wrapperBlocked(cfg, from, tokenAddress);
+    if (why) throw new Error(why);
+  }
+
   async function onSend() {
     if (!token || amountBase == null) return;
     setBusy(true);
@@ -66,14 +72,24 @@ export function Send() {
           const wei = parseAmountSafe(amount, 18)!;
           await toast.run(`Send ${amount} ${token.symbol}`, () => rome.evmSendNative(provider, from, to as Hex, wei), { success: "Sent" });
         } else {
-          await toast.run(`Send ${amount} ${token.symbol}`, () => rome.evmSendErc20(provider, from, token.address, to as Hex, amountBase), {
-            success: "Sent",
-          });
+          await toast.run(
+            `Send ${amount} ${token.symbol}`,
+            async () => {
+              await requireUsable(from, token.address);
+              return rome.evmSendErc20(provider, from, token.address, to as Hex, amountBase);
+            },
+            { success: "Sent" },
+          );
         }
       } else {
-        await toast.run(`Send ${amount} wUSDC`, () => rome.solanaSendWusdc(cfg, solana.publicKey!, solana.signTransaction!, to as Hex, amountBase), {
-          success: "Sent",
-        });
+        await toast.run(
+          `Send ${amount} wUSDC`,
+          async () => {
+            await requireUsable(rome.syntheticFor(solana.publicKey!));
+            return rome.solanaSendWusdc(cfg, solana.publicKey!, solana.signTransaction!, to as Hex, amountBase);
+          },
+          { success: "Sent" },
+        );
       }
       setAmount("");
       setTo("");

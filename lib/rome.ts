@@ -39,6 +39,30 @@ export function wusdcBalanceOf(cfg: RomeConfig, who: Hex): Promise<bigint> {
   return publicClient(cfg).readContract({ address: cfg.wusdc, abi: erc20Abi, functionName: "balanceOf", args: [who] }) as Promise<bigint>;
 }
 
+/**
+ * Rome's wrapped-SPL tokens (wUSDC, wETH, wSOL) can be rejecting every approve/transfer: the
+ * EVM program refuses a precompile signing as the caller through DELEGATECALL, which is how the
+ * deployed wrappers reach it. Simulate a no-op approve from the user before spending anything, so
+ * a flow that wraps/funds first can't strand the user's money half-way. Returns a user-facing
+ * reason when blocked, or null (also null on unrelated RPC trouble — don't block on that).
+ */
+export async function wrapperBlocked(cfg: RomeConfig, from: Hex, token: Hex = cfg.wusdc): Promise<string | null> {
+  try {
+    await publicClient(cfg).call({
+      account: from,
+      to: token,
+      data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: ["0x000000000000000000000000000000000000dEaD", 0n] }),
+    });
+    return null;
+  } catch (e: any) {
+    const msg = `${e?.shortMessage ?? ""} ${e?.details ?? ""} ${e?.message ?? ""}`;
+    if (/DELEGATECALL|signs as the caller/i.test(msg)) {
+      return "Rome's wrapped tokens (wUSDC, wETH, wSOL) are rejecting approvals and transfers right now. It's a chain-side change Rome has to fix. Nothing was spent.";
+    }
+    return null;
+  }
+}
+
 // ------------------------------ EVM lane (MetaMask) ------------------------------
 // A MetaMask user has native gas (USDC). `evmWrapToWusdc` turns some into the
 // wUSDC wrapper (18-dec `weiAmount` in, 6-dec wUSDC out); then it's a normal
