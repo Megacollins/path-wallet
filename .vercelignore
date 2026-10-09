@@ -1,0 +1,17 @@
+# What `vercel --prod` must NOT upload. The Vercel CLI does not read .gitignore, so anything not listed here
+# is sent with every deploy. Server-side settings live in Vercel → Project → Settings → Environment Variables.
+
+# local secrets (testnet deployer / faucet keys, local DB URLs) — never ship these
+.env
+.env.*
+!.env.example
+
+# local tooling and scratch state
+.claude
+.data
+server/.faucet-state.json
+
+# rebuilt on Vercel (npm run build regenerates both)
+dist
+src/config.generated.json
+.vercel

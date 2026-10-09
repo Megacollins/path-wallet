@@ -7,10 +7,17 @@
 // and projects EVERY live registry chain, so the app can offer a network switcher.
 // The default chain (CHAIN_ID, else Rome Hadrian) comes first.
 import "dotenv/config";
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
 import { listChains, getTokens, getBridge } from "@rome-protocol/registry";
 import { DEFAULT_CHAIN_ID, loadConfig } from "../lib/config.js";
 import type { BridgeSource, PathConfig, TokenMeta } from "../lib/assets.js";
+
+// Secrets guard. A deploy must never carry a local .env (it holds private keys): .vercelignore keeps it out,
+// and this fails the build loudly if that ever stops working, instead of shipping the keys silently.
+if (process.env.VERCEL && existsSync(new URL("../.env", import.meta.url))) {
+  console.error("\nRefusing to build: a .env file was uploaded with this deployment (it can hold private keys).\nCheck that .vercelignore lists `.env`, move any needed settings to Vercel → Project → Settings → Environment Variables, and redeploy.\n");
+  process.exit(1);
+}
 
 const KNOWN_NATIVE: Record<number, string> = { 80002: "POL", 43113: "AVAX", 10143: "MON" };
 // Circle testnet USDC per source chain (canonical; also in registry bridge.json assets).
