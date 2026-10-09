@@ -6,3 +6,5 @@ src/config.generated.json
 server/.faucet-state.json
 .vercel
 .claude
+
+.data

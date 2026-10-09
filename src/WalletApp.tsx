@@ -4,6 +4,7 @@
 import { lazy, Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
 import { WalletProvider } from "./wallet";
+import { AccountProvider } from "./account";
 import { AppShell } from "./components/layout";
 import { Spinner } from "./components/ui";
 
@@ -25,19 +26,21 @@ function PageFallback() {
 export function WalletApp() {
   return (
     <WalletProvider>
-      <AppShell>
-        <Suspense fallback={<PageFallback />}>
-          <Routes>
-            <Route path="/app" element={<Dashboard />} />
-            <Route path="/send" element={<Send />} />
-            <Route path="/bridge" element={<Bridge />} />
-            <Route path="/vault" element={<Vault />} />
-            <Route path="/apps" element={<Apps />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="*" element={<Dashboard />} />
-          </Routes>
-        </Suspense>
-      </AppShell>
+      <AccountProvider>
+        <AppShell>
+          <Suspense fallback={<PageFallback />}>
+            <Routes>
+              <Route path="/app" element={<Dashboard />} />
+              <Route path="/send" element={<Send />} />
+              <Route path="/bridge" element={<Bridge />} />
+              <Route path="/vault" element={<Vault />} />
+              <Route path="/apps" element={<Apps />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="*" element={<Dashboard />} />
+            </Routes>
+          </Suspense>
+        </AppShell>
+      </AccountProvider>
     </WalletProvider>
   );
 }

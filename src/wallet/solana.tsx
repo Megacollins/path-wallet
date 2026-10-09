@@ -32,10 +32,12 @@ export interface SolanaState {
   connect: () => void;
   disconnect: () => Promise<void>;
   signTransaction: ((tx: Transaction) => Promise<Transaction>) | undefined;
+  /** Signs arbitrary bytes (no transaction, no fee) — used to prove wallet ownership when signing in. */
+  signMessage: ((message: Uint8Array) => Promise<Uint8Array>) | undefined;
 }
 
 export function useSolana(): SolanaState {
-  const { select, connect, connected, connecting, publicKey, disconnect, signTransaction, wallet, wallets } = useWallet();
+  const { select, connect, connected, connecting, publicKey, disconnect, signTransaction, signMessage, wallet, wallets } = useWallet();
   const [pending, setPending] = useState(false);
 
   // Phantom is "available" only when actually installed/loadable — the adapter is
@@ -68,5 +70,6 @@ export function useSolana(): SolanaState {
     connect: doConnect,
     disconnect,
     signTransaction: signTransaction as ((tx: Transaction) => Promise<Transaction>) | undefined,
+    signMessage,
   };
 }

@@ -12,10 +12,13 @@
     "faucet": "tsx server/faucet-server.ts",
     "dev": "npm run gen-config && vite",
     "build": "npm run gen-config && tsc --noEmit && vite build",
-    "typecheck": "npm run gen-config && tsc --noEmit"
+    "typecheck": "npm run gen-config && tsc --noEmit",
+    "test:auth": "tsx scripts/test-auth.ts"
   },
   "dependencies": {
     "@canton-network/dapp-sdk": "^1.7.1",
+    "@neondatabase/serverless": "^1.2.0",
+    "@noble/curves": "^2.4.0",
     "@rome-protocol/registry": "github:rome-protocol/rome-registry#v0.1.0",
     "@rome-protocol/sdk": "github:rome-protocol/rome-sdk-ts#v0.2.1",
     "@solana/spl-token": "^0.4.9",
@@ -35,6 +38,7 @@
     "wagmi": "^3.7.4"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.8",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",

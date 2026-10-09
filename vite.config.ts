@@ -1,3 +1,5 @@
+import { spawn } from "node:child_process";
+import path from "node:path";
 import { defineConfig, loadEnv, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
@@ -22,6 +24,21 @@ const stubWalletConnectForCantonSdk = (): Plugin => ({
   },
 });
 
+// The API (api/*.ts, Web-standard handlers) runs as its own small Node process during `vite dev`
+// (scripts/api-dev.ts under `tsx watch`, so edits hot-reload) and Vite proxies /api to it. In
+// production Vercel runs the same files as functions. Starting it here keeps `npm run dev` one command.
+const API_PORT = Number(process.env.API_DEV_PORT ?? 8788);
+const apiDev = (): Plugin => ({
+  name: "path-api-dev",
+  apply: "serve",
+  configureServer(server) {
+    const child = spawn(process.execPath, [path.join(process.cwd(), "node_modules/tsx/dist/cli.mjs"), "watch", "--clear-screen=false", "scripts/api-dev.ts"], { stdio: "inherit", env: process.env });
+    const stop = () => child.killed || child.kill();
+    server.httpServer?.once("close", stop);
+    process.once("exit", stop);
+  },
+});
+
 // Rome's hosted bridge-api sends no CORS headers, so the browser reaches it via
 // this same-origin proxy (/bridge-api/* → the hosted API). Production does the
 // same with the rewrite in vercel.json.
@@ -40,6 +57,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react(),
+      apiDev(),
       // @solana/web3.js + wallet-adapter reference Node globals (`Buffer`, `global`,
       // `process`) in the browser bundle. The polyfill plugin injects real shims so
       // they resolve cleanly in both dev and build — without it Vite externalizes
@@ -49,7 +67,7 @@ export default defineConfig(({ mode }) => {
       }),
       ...(walletConnectEnabled ? [] : [stubWalletConnectForCantonSdk()]),
     ],
-    server: { proxy: bridgeProxy },
+    server: { proxy: { ...bridgeProxy, "/api": { target: `http://127.0.0.1:${API_PORT}`, changeOrigin: false } } },
     preview: { proxy: bridgeProxy },
     build: {
       // WalletApp.tsx (wagmi + viem + @solana/wallet-adapter + the Rome SDK) is

@@ -2,6 +2,7 @@
 // catalog, and the modular SmartAccount status.
 import { useCfg } from "../network";
 import { useWallets } from "../wallet";
+import { AccountCard } from "../components/AccountCard";
 import { PathMark } from "../components/Logo";
 import { Card, Copyable, Eyebrow, TokenGlyph } from "../components/ui";
 
@@ -98,6 +99,9 @@ export function Settings() {
           </LaneLine>
         </div>
       </Card>
+
+      {/* Path account (sign in + link wallets) */}
+      <AccountCard />
 
       {/* Smart account */}
       <Card>
