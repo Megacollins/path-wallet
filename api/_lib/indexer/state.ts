@@ -14,6 +14,12 @@ export async function setState(key: string, value: unknown): Promise<void> {
   );
 }
 
+/** Create a state row only if it doesn't exist yet; returns whichever value is stored afterwards. */
+export async function createState<T = Record<string, unknown>>(key: string, value: T): Promise<T> {
+  await query(`insert into indexer_state (key, value) values ($1, $2::jsonb) on conflict (key) do nothing`, [key, JSON.stringify(value)]);
+  return ((await getState<T>(key)) ?? value) as T;
+}
+
 /**
  * Save a scan cursor, but never move it backwards: two overlapping runs (a cron and a user-triggered
  * sync) can finish out of order, and the slower, older one must not rewind the position.

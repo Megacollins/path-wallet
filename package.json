@@ -14,7 +14,8 @@
     "build": "npm run gen-config && tsc --noEmit && vite build",
     "typecheck": "npm run gen-config && tsc --noEmit",
     "test:auth": "tsx scripts/test-auth.ts",
-    "test:indexer": "tsx scripts/test-indexer.ts"
+    "test:indexer": "tsx scripts/test-indexer.ts",
+    "backfill": "tsx scripts/backfill.ts"
   },
   "dependencies": {
     "@canton-network/dapp-sdk": "^1.7.1",

@@ -18,7 +18,7 @@ async function status() {
   const [byKind, wallets, cursors, snaps, newest] = await Promise.all([
     query(`select source, kind, chain_id, status, count(*)::int as n from chain_events group by source, kind, chain_id, status order by source, kind, chain_id, status`),
     query(`select count(*)::int as n from wallets`),
-    query(`select key, value, updated_at from indexer_state where key like 'vault:%' order by key`),
+    query(`select key, value, updated_at from indexer_state where key like 'vault%' order by key`),
     query(`select count(*)::int as n from wallet_snapshots`),
     query(`select max(first_seen_at) as at from chain_events`),
   ]);

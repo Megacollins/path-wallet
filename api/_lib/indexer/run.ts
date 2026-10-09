@@ -94,7 +94,10 @@ export async function runIndexer(opts: RunOptions): Promise<RunSummary> {
     if (Date.now() >= vaultDeadline) break;
     try {
       const r = await syncVault(net, { deadline: vaultDeadline });
-      if (r) vault.push(r);
+      if (r) {
+        vault.push(r);
+        if (r.backfill?.error) errors.push(`vault backfill ${net.chainName}: ${r.backfill.error}`);
+      }
     } catch (e: any) {
       errors.push(`vault ${net.chainName}: ${String(e?.message ?? e).slice(0, 160)}`);
     }

@@ -90,6 +90,7 @@ globalThis.fetch = (async (input: any, init?: any) => {
   throw new Error("unexpected fetch: " + url);
 }) as typeof fetch;
 
+const BF_ENV = `INDEXER_VAULT_FROM_BLOCK_${HADRIAN.chainId}`;
 const ADDR = (n: number) => "0x" + n.toString(16).padStart(40, "0");
 const SOLANA = "BCeG8VUWnQ2RcsYFbotaYSivrE8RraTQEtAwcATMj389";
 const SYNTH = "0xc5e4a7b03a2c01328770ee964f211e91b08a73a8";
@@ -110,6 +111,7 @@ async function reset() {
   chain.failWhenConcurrent = false;
   chain.nonces.clear();
   chain.balances.clear();
+  delete process.env[BF_ENV];
   bridge.transfers.clear();
   bridge.calls = [];
   bridge.fail = false;
@@ -199,6 +201,112 @@ const count = async (where = "true") => Number((await query(`select count(*)::in
   await syncVault(HADRIAN, { deadline: FAR() });
   check("vault: after the failure clears, nothing was lost", (await count()) === 5, await count());
   process.env.INDEXER_LOOKBACK_BLOCKS = "100000";
+}
+
+/* ------------------------------------------------------------ backfill */
+// Forward scan origin = safe - lookback = 999_970 - 100_000 = 899_970. The backfill fills [start .. origin].
+const bfState = () => getState<{ next: number; from: number; end: number; done: boolean }>(`vault-backfill:${HADRIAN.chainId}`);
+const blocksOf = async () => (await query(`select (data->>'block')::int as b from chain_events where source = 'vault' order by b`)).map((r) => Number(r.b));
+
+{
+  await reset();
+  process.env[BF_ENV] = "600000";
+  chain.logs = [599_000, 600_000, 700_000, 899_969, 899_970, 950_000].map((b) => log(b, "dep", ADDR(1), BigInt(b)));
+  const r = await syncVault(HADRIAN, { deadline: FAR() });
+  check("backfill: fills history from the start block up to where the forward scan began", r?.backfill?.done === true && r.backfill.end === 899_970, r?.backfill);
+  check("backfill: every log in range is captured once (boundary block not doubled; log before the start not read)", JSON.stringify(await blocksOf()) === JSON.stringify([600_000, 700_000, 899_969, 899_970, 950_000]), await blocksOf());
+  check("backfill: never reads before the configured start block", Math.min(...chain.calls.map((c) => c.from)) === 600_000, chain.calls[0]);
+  const st = await bfState();
+  check("backfill: finished state is recorded", st?.done === true && st.from === 600_000 && st.end === 899_970 && st.next === 899_971, st);
+  chain.calls = [];
+  const again = await syncVault(HADRIAN, { deadline: FAR() });
+  check("backfill: once done, later runs do no historical scanning at all", again?.backfill?.done === true && again.backfill.events === 0 && chain.calls.length === 0, { again: again?.backfill, calls: chain.calls.length });
+}
+
+{
+  await reset();
+  chain.logs = [320_000, 420_000, 520_000, 620_000, 720_000, 820_000].map((b) => log(b, "dep", ADDR(2), BigInt(b)));
+  await syncVault(HADRIAN, { deadline: FAR() }); // forward only: establishes the origin
+  process.env[BF_ENV] = "300000";
+  chain.latencyMs = 30;
+  const partial = await syncVault(HADRIAN, { deadline: Date.now() + 25 });
+  const st = await bfState();
+  check("backfill: a deadline stops after a whole batch and saves exactly that progress", partial?.backfill?.done === false && st?.next === 300_000 + 80_000 && JSON.stringify(await blocksOf()) === JSON.stringify([320_000]), { st, blocks: await blocksOf() });
+  chain.latencyMs = 0;
+  let rounds = 0;
+  while (!(await bfState())?.done && rounds++ < 20) await syncVault(HADRIAN, { deadline: FAR() });
+  check("backfill: resuming finishes the range: every log once, no gaps", JSON.stringify(await blocksOf()) === JSON.stringify([320_000, 420_000, 520_000, 620_000, 720_000, 820_000]), await blocksOf());
+}
+
+{
+  await reset();
+  await syncVault(HADRIAN, { deadline: FAR() });
+  process.env[BF_ENV] = "300000";
+  chain.logs = [320_000, 520_000, 820_000, 1_000_100].map((b) => log(b, "dep", ADDR(3), BigInt(b)));
+  chain.head = 1_000_500; // the chain moved on: the forward scan has one genuinely new event to find
+  chain.failFrom.add(300_000 + 80_000 + 20_000); // a page in the SECOND historical batch fails
+  const r = await syncVault(HADRIAN, { deadline: FAR() });
+  check("backfill: a failing historical page is reported but does not take the forward result down", r !== null && r.caughtUp === true && typeof r.backfill?.error === "string" && r.events === 1, r);
+  const st = await bfState();
+  check("backfill: its cursor stays at the last fully-successful batch", st?.next === 380_000 && !st.done, st);
+  const summary = await runIndexer({ budgetMs: 30_000 });
+  check("backfill: the run summary lists the failure among its errors", summary.errors.some((e) => e.includes("vault backfill")), summary.errors);
+  chain.failFrom.clear();
+  let rounds = 0;
+  while (!(await bfState())?.done && rounds++ < 20) await syncVault(HADRIAN, { deadline: FAR() });
+  check("backfill: after the failure clears, nothing was lost", JSON.stringify(await blocksOf()) === JSON.stringify([320_000, 520_000, 820_000, 1_000_100]), await blocksOf());
+}
+
+{
+  await reset();
+  await syncVault(HADRIAN, { deadline: FAR() });
+  chain.logs = [710_000, 790_000, 810_000, 890_000].map((b) => log(b, "dep", ADDR(4), BigInt(b)));
+  process.env[BF_ENV] = "800000";
+  await syncVault(HADRIAN, { deadline: FAR() });
+  check("backfill: first pass covers only from 800,000", JSON.stringify(await blocksOf()) === JSON.stringify([810_000, 890_000]), await blocksOf());
+  chain.calls = [];
+  process.env[BF_ENV] = "700000"; // a deeper start is configured later
+  await syncVault(HADRIAN, { deadline: FAR() });
+  const lo = chain.calls.length ? Math.min(...chain.calls.map((c) => c.from)) : -1;
+  const hi = chain.calls.length ? Math.max(...chain.calls.map((c) => c.to)) : -1;
+  check("backfill: lowering the start block scans ONLY the newly uncovered range", lo === 700_000 && hi <= 799_999, { lo, hi });
+  check("backfill: ...and picks up the earlier logs", JSON.stringify(await blocksOf()) === JSON.stringify([710_000, 790_000, 810_000, 890_000]), await blocksOf());
+  const st = await bfState();
+  check("backfill: the extended state is recorded", st?.done === true && st.from === 700_000, st);
+}
+
+{
+  await reset();
+  process.env[BF_ENV] = "950000"; // newer than the forward origin: nothing to backfill
+  const r = await syncVault(HADRIAN, { deadline: FAR() });
+  check("backfill: a start block inside the forward range is a no-op (no state, no scanning)", r?.backfill === undefined && (await bfState()) === null);
+  delete process.env[BF_ENV];
+  const none = await syncVault(HADRIAN, { deadline: FAR() });
+  check("backfill: with nothing configured the result has no backfill section", none?.backfill === undefined);
+  process.env[BF_ENV] = "not-a-block";
+  check("backfill: a malformed setting is ignored rather than breaking the scan", (await syncVault(HADRIAN, { deadline: FAR() }))?.backfill === undefined);
+}
+
+{
+  await reset();
+  // A deployment already running from before backfill existed: the forward cursor has no recorded origin.
+  await query(`insert into indexer_state (key, value) values ($1, $2::jsonb)`, [`vault:${HADRIAN.chainId}`, JSON.stringify({ next: 899_970, page: 10_000 })]);
+  chain.logs = [810_000, 899_900, 950_000].map((b) => log(b, "dep", ADDR(5), BigInt(b)));
+  process.env[BF_ENV] = "800000";
+  const r = await syncVault(HADRIAN, { deadline: FAR() });
+  const st = await bfState();
+  check("backfill: on an existing deployment (no origin saved) it ends where the forward cursor stood", r?.backfill?.done === true && st?.end === 899_970, st);
+  check("backfill: ...and captures the history the forward scan had skipped", JSON.stringify(await blocksOf()) === JSON.stringify([810_000, 899_900, 950_000]), await blocksOf());
+}
+
+{
+  await reset();
+  await syncVault(HADRIAN, { deadline: FAR() });
+  chain.logs = [650_000, 750_000, 850_000].map((b) => log(b, "dep", ADDR(6), BigInt(b)));
+  process.env[BF_ENV] = "600000";
+  await Promise.all([syncVault(HADRIAN, { deadline: FAR() }), syncVault(HADRIAN, { deadline: FAR() })]);
+  const st = await bfState();
+  check("backfill: two overlapping runs create one backfill and no duplicate events", st?.done === true && (await count("source = 'vault'")) === 3 && JSON.stringify(await blocksOf()) === JSON.stringify([650_000, 750_000, 850_000]), { st, blocks: await blocksOf() });
 }
 
 /* -------------------------------------------------------------- bridge */
