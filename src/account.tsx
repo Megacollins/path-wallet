@@ -2,7 +2,7 @@
 // signature — no transaction, no gas); linking adds your other lane's wallet to the same account.
 // Everything here is optional: the wallet works fully without an account, and if the API isn't
 // reachable the account UI simply doesn't appear.
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { stringToHex } from "viem";
 import { useWallets } from "./wallet";
 
@@ -69,6 +69,17 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       alive = false;
     };
   }, []);
+
+  // Once per page load per wallet set (sign-in, link, or an existing session): quietly ask the server to
+  // refresh this account's indexed activity. It's throttled server-side and invisible; failures don't matter.
+  const synced = useRef<string | null>(null);
+  useEffect(() => {
+    if (!account) return;
+    const sig = `${account.id}:${account.wallets.map((w) => w.address).sort().join(",")}`;
+    if (synced.current === sig) return;
+    synced.current = sig;
+    fetch("/api/account/sync", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: "{}" }).catch(() => {});
+  }, [account]);
 
   // The connected wallet's address for a lane, and a function that signs a message with it.
   const lane = useCallback(

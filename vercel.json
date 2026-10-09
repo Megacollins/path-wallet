@@ -1,6 +1,11 @@
 {
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "functions": {
+    "api/cron/index.ts": { "maxDuration": 60 },
+    "api/account/sync.ts": { "maxDuration": 30 }
+  },
+  "crons": [{ "path": "/api/cron/index", "schedule": "0 4 * * *" }],
   "rewrites": [
     { "source": "/bridge-api/:path*", "destination": "https://bridge-api.devnet.romeprotocol.xyz/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
