@@ -18,7 +18,6 @@
   "dependencies": {
     "@canton-network/dapp-sdk": "^1.7.1",
     "@neondatabase/serverless": "^1.2.0",
-    "@noble/curves": "^2.4.0",
     "@rome-protocol/registry": "github:rome-protocol/rome-registry#v0.1.0",
     "@rome-protocol/sdk": "github:rome-protocol/rome-sdk-ts#v0.2.1",
     "@solana/spl-token": "^0.4.9",

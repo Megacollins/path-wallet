@@ -6,7 +6,9 @@ delete process.env.DATABASE_URL;
 
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { Keypair } from "@solana/web3.js";
-import { ed25519 } from "@noble/curves/ed25519.js";
+import { createPrivateKey, randomBytes, sign as edSign } from "node:crypto";
+import { PublicKey } from "@solana/web3.js";
+import { syntheticAddress } from "@rome-protocol/sdk";
 import * as challenge from "../api/auth/challenge.js";
 import * as verify from "../api/auth/verify.js";
 import * as logout from "../api/auth/logout.js";
@@ -14,7 +16,7 @@ import * as unlink from "../api/wallets/unlink.js";
 import * as me from "../api/me.js";
 import * as health from "../api/health.js";
 import { query } from "../api/_lib/db.js";
-import { syntheticFor } from "../api/_lib/auth.js";
+import { base58Decode, base58Encode, normalizeAddress, syntheticFor } from "../api/_lib/auth.js";
 
 const ORIGIN = "http://localhost:5188";
 let failures = 0;
@@ -55,7 +57,10 @@ const evm = privateKeyToAccount(evmKey);
 const sol = Keypair.generate();
 const solAddr = sol.publicKey.toBase58();
 const signEvm = (a: typeof evm, message: string) => a.signMessage({ message });
-const signSol = (kp: Keypair, message: string) => Buffer.from(ed25519.sign(new TextEncoder().encode(message), kp.secretKey.slice(0, 32))).toString("base64");
+// PKCS#8 wrapper around a 32-byte ed25519 seed, so node:crypto can sign like a Solana wallet does.
+const ED25519_PKCS8 = Buffer.from("302e020100300506032b657004220420", "hex");
+const signSol = (kp: Keypair, message: string) =>
+  edSign(null, Buffer.from(message, "utf8"), createPrivateKey({ key: Buffer.concat([ED25519_PKCS8, Buffer.from(kp.secretKey.slice(0, 32))]), format: "der", type: "pkcs8" })).toString("base64");
 
 async function signIn(b: Browser, kind: "evm" | "solana", who: any) {
   const addr = kind === "evm" ? who.address : who.publicKey.toBase58();
@@ -69,6 +74,21 @@ const a = new Browser();
 // --- health + migrations
 const h = await health.GET();
 check("health ok on pglite", (await h.json()).db === "pglite" && h.status === 200);
+
+// --- the hand-written base58 / synthetic-address code must agree with web3.js and the Rome SDK
+{
+  let ok = true;
+  for (let i = 0; i < 200; i++) {
+    const kp = Keypair.generate();
+    const b58 = kp.publicKey.toBase58();
+    if (normalizeAddress("solana", b58) !== b58 || base58Encode(base58Decode(b58)) !== b58 || syntheticFor(b58) !== syntheticAddress(kp.publicKey).toLowerCase()) ok = false;
+  }
+  // keys with leading zero bytes exercise base58's leading-"1" rule
+  const zeros = new PublicKey(Buffer.concat([Buffer.alloc(3), randomBytes(29)]));
+  if (normalizeAddress("solana", zeros.toBase58()) !== zeros.toBase58() || syntheticFor(zeros.toBase58()) !== syntheticAddress(zeros).toLowerCase()) ok = false;
+  check("base58 + synthetic address match web3.js and the Rome SDK (200 random keys + leading zeros)", ok);
+  check("malformed Solana addresses are rejected", ["", "0OIl", "1111", "x".repeat(70), "A".repeat(60)].every((a) => normalizeAddress("solana", a) === null) && normalizeAddress("solana", 5) === null);
+}
 
 // --- EVM sign-in creates the account
 {

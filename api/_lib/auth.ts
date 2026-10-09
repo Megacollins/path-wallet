@@ -1,11 +1,11 @@
 // Sign-in with a wallet, for both lanes. The server issues a one-time challenge, the wallet signs
 // the exact message (no gas, no transaction), the server checks the signature and starts a session.
 // EVM: EIP-191 personal_sign, EOAs only. Solana: ed25519 over the UTF-8 message (Phantom signMessage).
-import { createHash, randomBytes } from "node:crypto";
-import { getAddress, isAddress, verifyMessage } from "viem";
-import { ed25519 } from "@noble/curves/ed25519.js";
-import { PublicKey } from "@solana/web3.js";
-import { syntheticAddress } from "@rome-protocol/sdk";
+// Deliberately free of @solana/web3.js and the Rome SDK: their dependency tree (rpc-websockets → an
+// ESM-only uuid) can't be loaded by Vercel's function runtime. Base58, ed25519 verification and the
+// synthetic-address hash are small enough to do directly with node:crypto and viem.
+import { createHash, createPublicKey, randomBytes, verify as edVerify } from "node:crypto";
+import { getAddress, isAddress, keccak256, verifyMessage } from "viem";
 import { query } from "./db.js";
 
 export type Kind = "evm" | "solana";
@@ -59,19 +59,51 @@ function cookieOf(req: Request, name: string): string | null {
 }
 
 /* ------------------------------------------------------------- addresses */
-/** Validates and normalizes: EVM → lowercase 0x…, Solana → canonical base58. Null when invalid. */
+const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+
+export function base58Decode(s: string): Uint8Array {
+  if (!s || s.length > 64) throw new Error("bad base58");
+  let n = 0n;
+  for (const c of s) {
+    const i = B58.indexOf(c);
+    if (i < 0) throw new Error("bad base58");
+    n = n * 58n + BigInt(i);
+  }
+  let hex = n.toString(16);
+  if (hex.length % 2) hex = "0" + hex;
+  const body = n === 0n ? [] : [...Buffer.from(hex, "hex")];
+  let zeros = 0;
+  while (zeros < s.length && s[zeros] === "1") zeros++;
+  return Uint8Array.from([...new Array(zeros).fill(0), ...body]);
+}
+
+export function base58Encode(b: Uint8Array): string {
+  let n = 0n;
+  for (const x of b) n = (n << 8n) | BigInt(x);
+  let out = "";
+  while (n > 0n) {
+    out = B58[Number(n % 58n)] + out;
+    n /= 58n;
+  }
+  let zeros = 0;
+  while (zeros < b.length && b[zeros] === 0) zeros++;
+  return "1".repeat(zeros) + out;
+}
+
+/** Validates and normalizes: EVM → lowercase 0x…, Solana → canonical base58 of a 32-byte key. Null when invalid. */
 export function normalizeAddress(kind: Kind, address: unknown): string | null {
   if (typeof address !== "string") return null;
   try {
     if (kind === "evm") return isAddress(address, { strict: false }) ? address.toLowerCase() : null;
-    return new PublicKey(address).toBase58();
+    const bytes = base58Decode(address);
+    return bytes.length === 32 ? base58Encode(bytes) : null;
   } catch {
     return null;
   }
 }
 
-/** A Phantom user's identity inside Rome's EVM: the address the indexer will see their activity under. */
-export const syntheticFor = (solanaAddress: string): string => syntheticAddress(new PublicKey(solanaAddress)).toLowerCase();
+/** A Phantom user's identity inside Rome's EVM (keccak256(pubkey)[12:]): the address the indexer will see their activity under. */
+export const syntheticFor = (solanaAddress: string): string => "0x" + keccak256(base58Decode(solanaAddress)).slice(-40);
 
 /* --------------------------------------------------------------- message */
 export function buildMessage(a: { host: string; kind: Kind; address: string; purpose: Purpose; nonce: string; issuedAt: Date; expiresAt: Date }): string {
@@ -93,14 +125,18 @@ export function buildMessage(a: { host: string; kind: Kind; address: string; pur
   ].join("\n");
 }
 
+// DER prefix that wraps a raw 32-byte ed25519 public key as an SPKI key node:crypto can load.
+const ED25519_SPKI = Buffer.from("302a300506032b6570032100", "hex");
+
 export async function verifySignature(kind: Kind, address: string, message: string, signature: unknown): Promise<boolean> {
   if (typeof signature !== "string" || signature.length > 400) return false;
   try {
     if (kind === "evm") return await verifyMessage({ address: getAddress(address), message, signature: signature as `0x${string}` });
     // Solana: the client sends the 64-byte signature base64-encoded.
-    const sig = Uint8Array.from(Buffer.from(signature, "base64"));
+    const sig = Buffer.from(signature, "base64");
     if (sig.length !== 64) return false;
-    return ed25519.verify(sig, new TextEncoder().encode(message), new PublicKey(address).toBytes());
+    const key = createPublicKey({ key: Buffer.concat([ED25519_SPKI, base58Decode(address)]), format: "der", type: "spki" });
+    return edVerify(null, Buffer.from(message, "utf8"), key, sig);
   } catch {
     return false;
   }
