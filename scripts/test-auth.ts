@@ -8,6 +8,7 @@ import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
 import { Keypair } from "@solana/web3.js";
 import { createPrivateKey, randomBytes, sign as edSign } from "node:crypto";
 import { PublicKey } from "@solana/web3.js";
+import { parseSignInMessage } from "@solana/wallet-standard-util";
 import { syntheticAddress } from "@rome-protocol/sdk";
 import * as challenge from "../api/auth/challenge.js";
 import * as verify from "../api/auth/verify.js";
@@ -88,6 +89,22 @@ check("health ok on pglite", (await h.json()).db === "pglite" && h.status === 20
   if (normalizeAddress("solana", zeros.toBase58()) !== zeros.toBase58() || syntheticFor(zeros.toBase58()) !== syntheticAddress(zeros).toLowerCase()) ok = false;
   check("base58 + synthetic address match web3.js and the Rome SDK (200 random keys + leading zeros)", ok);
   check("malformed Solana addresses are rejected", ["", "0OIl", "1111", "x".repeat(70), "A".repeat(60)].every((a) => normalizeAddress("solana", a) === null) && normalizeAddress("solana", 5) === null);
+}
+
+// --- the Solana message must be a valid Sign-In With Solana message for THIS site. Phantom refuses to
+//     show one whose first word isn't the page's domain ("domain does not match the requesting app's origin").
+{
+  const b = new Browser();
+  const c = await b.challenge("solana", solAddr, "signin");
+  const parsed = parseSignInMessage(new TextEncoder().encode(c.data.message));
+  check("Solana message parses as Sign-In With Solana", parsed !== null, c.data.message);
+  check("…its domain is the site's host (what Phantom compares to the origin)", parsed?.domain === "localhost:5188", parsed);
+  check("…its address, nonce and URI are right", parsed?.address === solAddr && parsed?.nonce === c.data.nonce && parsed?.uri === ORIGIN, parsed);
+  check("…it carries version and expiry", parsed?.version === "1" && Boolean(parsed?.expirationTime) && Boolean(parsed?.issuedAt), parsed);
+  const link = await (async () => { const a2 = new Browser(); await signIn(a2, "evm", privateKeyToAccount(generatePrivateKey())); return a2.challenge("solana", solAddr, "link"); })();
+  check("a link-purpose Solana message is valid SIWS too", parseSignInMessage(new TextEncoder().encode(link.data.message))?.domain === "localhost:5188", link.data.message);
+  const e = await new Browser().challenge("evm", evm.address, "signin");
+  check("EVM message opens with the domain", e.data.message.startsWith("localhost:5188 wants you to sign in with your Ethereum account:\n"), e.data.message.split("\n")[0]);
 }
 
 // --- EVM sign-in creates the account

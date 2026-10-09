@@ -1,7 +1,7 @@
 // POST /api/auth/challenge  { kind, address, purpose }  →  { nonce, message, expiresAt }
 // The wallet signs `message` exactly as returned, then posts the signature to /api/auth/verify.
 import { query } from "../_lib/db.js";
-import { CHALLENGE_TTL_MS, buildMessage, fail, guardPost, hostOf, json, newNonce, normalizeAddress, readBody, sessionAccount, type Kind, type Purpose } from "../_lib/auth.js";
+import { CHALLENGE_TTL_MS, buildMessage, fail, guardPost, json, newNonce, normalizeAddress, originOf, readBody, sessionAccount, type Kind, type Purpose } from "../_lib/auth.js";
 
 export async function POST(req: Request): Promise<Response> {
   const bad = guardPost(req);
@@ -30,7 +30,7 @@ export async function POST(req: Request): Promise<Response> {
   const nonce = newNonce();
   const issuedAt = new Date();
   const expiresAt = new Date(issuedAt.getTime() + CHALLENGE_TTL_MS);
-  const message = buildMessage({ host: hostOf(req), kind, address, purpose, nonce, issuedAt, expiresAt });
+  const message = buildMessage({ origin: originOf(req), kind, address, purpose, nonce, issuedAt, expiresAt });
   await query(`insert into auth_challenges (nonce, kind, address, purpose, account_id, message, expires_at) values ($1, $2, $3, $4, $5, $6, $7)`, [nonce, kind, address, purpose, accountId, message, expiresAt]);
   return json({ nonce, message, expiresAt: expiresAt.toISOString() });
 }

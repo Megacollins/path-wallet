@@ -106,19 +106,29 @@ export function normalizeAddress(kind: Kind, address: unknown): string | null {
 export const syntheticFor = (solanaAddress: string): string => "0x" + keccak256(base58Decode(solanaAddress)).slice(-40);
 
 /* --------------------------------------------------------------- message */
-export function buildMessage(a: { host: string; kind: Kind; address: string; purpose: Purpose; nonce: string; issuedAt: Date; expiresAt: Date }): string {
+/** scheme://host as the browser sees it. */
+export const originOf = (req: Request) => `${isSecure(req) ? "https" : "http"}://${hostOf(req)}`;
+
+// Wallets treat a message that opens "<domain> wants you to sign in with your … account:" as a
+// sign-in request (EIP-4361 / Sign-In With Solana) and refuse to show it unless that first word is
+// the domain of the site asking. Phantom enforces this: a message that opened with the app's *name*
+// was rejected ("domain does not match the requesting app's origin"). So: real domain, real origin.
+export function buildMessage(a: { origin: string; kind: Kind; address: string; purpose: Purpose; nonce: string; issuedAt: Date; expiresAt: Date }): string {
+  const domain = new URL(a.origin).host;
   const shown = a.kind === "evm" ? getAddress(a.address) : a.address;
   const what =
     a.purpose === "signin"
       ? "Sign in to Path. This costs nothing and sends no transaction."
       : "Link this wallet to your Path account. This costs nothing and sends no transaction.";
   return [
-    `Path wants you to sign in with your ${a.kind === "evm" ? "Ethereum" : "Solana"} account:`,
+    `${domain} wants you to sign in with your ${a.kind === "evm" ? "Ethereum" : "Solana"} account:`,
     shown,
     "",
     what,
     "",
-    `URI: https://${a.host}`,
+    `URI: ${a.origin}`,
+    // SIWS carries a version; for EVM we stay off the strict EIP-4361 shape (it would add chain-id checks).
+    ...(a.kind === "solana" ? ["Version: 1"] : []),
     `Nonce: ${a.nonce}`,
     `Issued At: ${a.issuedAt.toISOString()}`,
     `Expiration Time: ${a.expiresAt.toISOString()}`,
