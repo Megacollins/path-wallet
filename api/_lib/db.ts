@@ -56,6 +56,9 @@ export async function query<T extends Row = Row>(text: string, params: unknown[]
   return (await driver()).query(text, params) as Promise<T[]>;
 }
 
+/** False only where there is nowhere to store anything: a deployed function with no DATABASE_URL. */
+export const dbConfigured = () => Boolean(process.env.DATABASE_URL?.trim()) || !process.env.VERCEL;
+
 export async function dbKind(): Promise<"neon" | "pglite"> {
   return (await driver()).name;
 }
