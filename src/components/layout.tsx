@@ -3,7 +3,9 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { Check, ChevronsUpDown, LayoutGrid, SendHorizonal, Landmark, Compass, Settings2, Waypoints, Menu, X, type LucideIcon } from "lucide-react";
+import { Check, ChevronsUpDown, LayoutGrid, SendHorizonal, Landmark, Compass, Settings2, Sparkles, Waypoints, Menu, X, type LucideIcon } from "lucide-react";
+import { useAccount } from "../account";
+import { XP_NAME, XP_PATH } from "../lib/xp";
 import { useNetwork } from "../network";
 import { useDemo } from "../demo";
 import { PathMark, Wordmark } from "./Logo";
@@ -17,6 +19,7 @@ const ICONS: Record<NavItem["icon"], LucideIcon> = {
   vault: Landmark,
   apps: Compass,
   settings: Settings2,
+  xp: Sparkles,
 };
 
 function Icon({ name, className = "h-5 w-5" }: { name: NavItem["icon"]; className?: string }) {
@@ -29,7 +32,9 @@ export interface NavItem {
   label: string;
   /** Shorter label for the six-across bottom bar, which has ~48px per item at 320px. */
   short: string;
-  icon: "dashboard" | "send" | "bridge" | "vault" | "apps" | "settings";
+  icon: "dashboard" | "send" | "bridge" | "vault" | "apps" | "settings" | "xp";
+  /** Set false to keep an item out of the phone bottom bar (it is already at its six-item limit at 320px). */
+  bottom?: boolean;
 }
 
 export const NAV: NavItem[] = [
@@ -37,6 +42,8 @@ export const NAV: NavItem[] = [
   { to: "/send", label: "Send", short: "Send", icon: "send" },
   { to: "/bridge", label: "Bridge", short: "Bridge", icon: "bridge" },
   { to: "/vault", label: "Vault", short: "Vault", icon: "vault" },
+  // On phones XP is reached from the header chip, not the bottom bar.
+  { to: XP_PATH, label: XP_NAME, short: XP_NAME, icon: "xp", bottom: false },
   { to: "/apps", label: "Ecosystem", short: "Apps", icon: "apps" },
   { to: "/settings", label: "Settings", short: "Settings", icon: "settings" },
 ];
@@ -208,6 +215,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
+            <XpChip />
             <DemoBadge />
             <WalletButton />
           </div>
@@ -259,7 +267,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         aria-label="Primary"
         className="glass-strong fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-30 flex items-stretch rounded-3xl p-1 shadow-lux min-[400px]:inset-x-4 sm:hidden"
       >
-        {NAV.map((item) => (
+        {NAV.filter((item) => item.bottom !== false).map((item) => (
           <NavLink
             key={item.to}
             to={item.to}
@@ -287,6 +295,19 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <MobileLogoWatermark />
     </div>
+  );
+}
+
+/** A small XP readout in the header (signed-in only); it links to the XP page. Number only on very narrow phones. */
+function XpChip() {
+  const { xp } = useAccount();
+  if (!xp) return null;
+  return (
+    <Link to={XP_PATH} className="chip whitespace-nowrap hover:!border-champagne/60" aria-label={`${XP_NAME}: ${xp.total.toLocaleString("en-US")}`} title={`${XP_NAME}: ${xp.total.toLocaleString("en-US")}`}>
+      <Sparkles className="h-3.5 w-3.5 shrink-0 text-champagne" strokeWidth={1.8} aria-hidden="true" />
+      <span className="tabular">{xp.total.toLocaleString("en-US")}</span>
+      <span className="hidden text-parchment/50 min-[400px]:inline">{XP_NAME}</span>
+    </Link>
   );
 }
 

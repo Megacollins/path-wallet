@@ -5,6 +5,7 @@ import { lazy, Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
 import { WalletProvider } from "./wallet";
 import { AccountProvider } from "./account";
+import { XP_PATH } from "./lib/xp";
 import { AppShell } from "./components/layout";
 import { Spinner } from "./components/ui";
 
@@ -14,6 +15,7 @@ const Bridge = lazy(() => import("./pages/Bridge").then((m) => ({ default: m.Bri
 const Vault = lazy(() => import("./pages/Vault").then((m) => ({ default: m.Vault })));
 const Apps = lazy(() => import("./pages/Apps").then((m) => ({ default: m.Apps })));
 const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m.Settings })));
+const Xp = lazy(() => import("./pages/Xp").then((m) => ({ default: m.Xp })));
 
 function PageFallback() {
   return (
@@ -36,6 +38,7 @@ export function WalletApp() {
               <Route path="/vault" element={<Vault />} />
               <Route path="/apps" element={<Apps />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path={XP_PATH} element={<Xp />} />
               <Route path="*" element={<Dashboard />} />
             </Routes>
           </Suspense>

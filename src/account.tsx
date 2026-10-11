@@ -5,6 +5,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { stringToHex } from "viem";
 import { useWallets } from "./wallet";
+import type { XpData } from "./lib/xp";
 
 export type Kind = "evm" | "solana";
 export interface AccountWallet {
@@ -31,6 +32,11 @@ interface AccountState {
   signOut: () => Promise<void>;
   /** Does this connected wallet already belong to the signed-in account? */
   isLinked: (kind: Kind, address: string | null | undefined) => boolean;
+  /** The account's XP (null until signed in and loaded, or if the API can't be reached). */
+  xp: XpData | null;
+  xpLoading: boolean;
+  /** Ask the server to index fresh activity (throttled there), then reload the XP. */
+  refreshXp: () => Promise<void>;
 }
 
 const Ctx = createContext<AccountState | null>(null);
@@ -55,6 +61,38 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const [account, setAccount] = useState<Account | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [xp, setXp] = useState<XpData | null>(null);
+  const [xpLoading, setXpLoading] = useState(false);
+
+  // Failures keep whatever XP we already show: a flaky load must not blank the page.
+  const loadXp = useCallback(async () => {
+    try {
+      setXp(await api<XpData>("/api/account/points"));
+    } catch {
+      /* keep the previous value */
+    }
+  }, []);
+
+  const accountId = account?.id ?? null;
+  useEffect(() => {
+    if (!accountId) {
+      setXp(null);
+      return;
+    }
+    setXpLoading(true);
+    void loadXp().finally(() => setXpLoading(false));
+  }, [accountId, loadXp]);
+
+  const refreshXp = useCallback(async () => {
+    setXpLoading(true);
+    try {
+      // The server throttles this per wallet set, so spamming the button costs nothing.
+      await fetch("/api/account/sync", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: "{}" }).catch(() => {});
+      await loadXp();
+    } finally {
+      setXpLoading(false);
+    }
+  }, [loadXp]);
 
   useEffect(() => {
     let alive = true;
@@ -78,8 +116,11 @@ export function AccountProvider({ children }: { children: ReactNode }) {
     const sig = `${account.id}:${account.wallets.map((w) => w.address).sort().join(",")}`;
     if (synced.current === sig) return;
     synced.current = sig;
-    fetch("/api/account/sync", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: "{}" }).catch(() => {});
-  }, [account]);
+    // When the background sync lands, reload the XP so anything it just awarded shows up without a refresh.
+    fetch("/api/account/sync", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: "{}" })
+      .then(() => loadXp())
+      .catch(() => {});
+  }, [account, loadXp]);
 
   // The connected wallet's address for a lane, and a function that signs a message with it.
   const lane = useCallback(
@@ -155,8 +196,11 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       unlink,
       signOut,
       isLinked: (kind, address) => Boolean(address && account?.wallets.some((w) => w.kind === kind && w.address === norm(kind, address))),
+      xp,
+      xpLoading,
+      refreshXp,
     }),
-    [status, account, busy, error, run, unlink, signOut],
+    [status, account, busy, error, run, unlink, signOut, xp, xpLoading, refreshXp],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

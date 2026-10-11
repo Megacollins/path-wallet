@@ -30,13 +30,16 @@ export const RULES: Rules = {
   vault: { enabled: false, points: 10, dailyCapPerWallet: 2 },
 };
 
-/** Plain-English description of the rules, for the account's own points view. */
+/**
+ * Plain-English description of the rules, for the account's own points view. The unit is written as the placeholder
+ * {xp}: the app substitutes whatever it calls points (see src/lib/xp.ts), so renaming never touches the server.
+ */
 export function describeRules(r: Rules = RULES) {
   return [
-    { rule: "tx_activity", enabled: r.tx_activity.enabled, text: `${r.tx_activity.perTx} point per transaction your wallet sends on Rome, up to ${r.tx_activity.dailyCapPerWallet} a day per wallet` },
-    { rule: "active_day", enabled: r.active_day.enabled, text: `${r.active_day.points} points for each day (UTC) a wallet sends at least one transaction` },
-    { rule: "bridge_in", enabled: r.bridge_in.enabled, text: `${r.bridge_in.points} points per completed bridge-in of at least ${r.bridge_in.minAmountBaseUnits / 1e6} USDC, up to ${r.bridge_in.dailyCapPerWallet} a day per wallet` },
-    { rule: "dual_lane", enabled: r.dual_lane.enabled, text: `${r.dual_lane.points} points once, when both lanes (EVM and Solana) are linked and each has sent a transaction` },
-    { rule: "vault", enabled: r.vault.enabled, text: `${r.vault.points} points per Vault deposit or withdrawal, up to ${r.vault.dailyCapPerWallet} a day per wallet` },
+    { rule: "tx_activity", enabled: r.tx_activity.enabled, text: `${r.tx_activity.perTx} {xp} per transaction your wallet sends on Rome, up to ${r.tx_activity.dailyCapPerWallet} a day per wallet` },
+    { rule: "active_day", enabled: r.active_day.enabled, text: `${r.active_day.points} {xp} for each day (UTC) a wallet sends at least one transaction` },
+    { rule: "bridge_in", enabled: r.bridge_in.enabled, text: `${r.bridge_in.points} {xp} per completed bridge-in of at least ${r.bridge_in.minAmountBaseUnits / 1e6} USDC, up to ${r.bridge_in.dailyCapPerWallet} a day per wallet` },
+    { rule: "dual_lane", enabled: r.dual_lane.enabled, text: `${r.dual_lane.points} {xp} once, when both lanes (EVM and Solana) are linked and each has sent a transaction` },
+    { rule: "vault", enabled: r.vault.enabled, text: `${r.vault.points} {xp} per Vault deposit or withdrawal, up to ${r.vault.dailyCapPerWallet} a day per wallet` },
   ];
 }
