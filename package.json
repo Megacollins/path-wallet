@@ -15,7 +15,8 @@
     "typecheck": "npm run gen-config && tsc --noEmit",
     "test:auth": "tsx scripts/test-auth.ts",
     "test:indexer": "tsx scripts/test-indexer.ts",
-    "backfill": "tsx scripts/backfill.ts"
+    "backfill": "tsx scripts/backfill.ts",
+    "test:points": "tsx scripts/test-points.ts"
   },
   "dependencies": {
     "@canton-network/dapp-sdk": "^1.7.1",

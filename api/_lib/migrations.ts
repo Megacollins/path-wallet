@@ -90,4 +90,39 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
       `create index if not exists wallet_snapshots_idx on wallet_snapshots (address, chain_id, taken_at desc)`,
     ],
   },
+  {
+    id: "003_points",
+    statements: [
+      // Append-only points ledger. Every point is a row; a balance is always a sum, never a stored number.
+      // (season, rule, ref) is unique, and `ref` names exactly what the point is for (one wallet-day-slot, one
+      // bridge transfer, …), so scoring is idempotent and a wallet that moves between accounts cannot be
+      // paid twice for the same thing. Mistakes are fixed by appending, never by editing.
+      // A new `season` re-scores everything from the recorded events under new rules, side by side.
+      `create table if not exists points_ledger (
+         id bigserial primary key,
+         season text not null,
+         account_id uuid not null references accounts(id),
+         rule text not null,
+         ref text not null,
+         points integer not null,
+         day date,
+         address text,
+         rules_version integer not null,
+         detail jsonb not null default '{}'::jsonb,
+         created_at timestamptz not null default now(),
+         unique (season, rule, ref)
+       )`,
+      `create index if not exists points_ledger_account_idx on points_ledger (account_id, season)`,
+      `create index if not exists points_ledger_day_idx on points_ledger (season, rule, address, day)`,
+      // Enforced by the database, not by good behaviour: no UPDATE or DELETE on the ledger, from any code.
+      `create or replace function points_ledger_immutable() returns trigger language plpgsql as $$
+         begin raise exception 'points_ledger is append-only'; end $$`,
+      `do $$ begin
+         if not exists (select 1 from pg_trigger where tgname = 'points_ledger_append_only') then
+           create trigger points_ledger_append_only before update or delete on points_ledger
+             for each row execute function points_ledger_immutable();
+         end if;
+       end $$`,
+    ],
+  },
 ];

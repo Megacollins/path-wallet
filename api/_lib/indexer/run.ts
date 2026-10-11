@@ -5,6 +5,7 @@ import { query } from "../db.js";
 import { NETWORKS } from "../networks.generated.js";
 import { syncBridgeForAddress } from "./bridge.js";
 import { snapshotAddress } from "./snapshots.js";
+import { scorePoints, type PointsSummary } from "../points/score.js";
 import { syncVault, type VaultSyncResult } from "./vault.js";
 
 export interface RunOptions {
@@ -23,6 +24,8 @@ export interface RunSummary {
   bridge: { addresses: number; fetched: number; changed: number; skipped: number };
   snapshots: { inserted: number };
   vault: VaultSyncResult[];
+  /** Points awarded by the scoring step that closes every pass. */
+  points?: PointsSummary;
   errors: string[];
   tookMs: number;
 }
@@ -103,5 +106,14 @@ export async function runIndexer(opts: RunOptions): Promise<RunSummary> {
     }
   }
 
-  return { wallets, bridge, snapshots, vault, errors, tookMs: Date.now() - started };
+  // 3. Finally score what was just recorded. Scoring only appends ledger rows and is idempotent, so a pass that
+  //    was cut short, or repeated, can never award anything twice.
+  let points: PointsSummary | undefined;
+  try {
+    points = await scorePoints({ accountId: opts.accountId });
+  } catch (e: any) {
+    errors.push(`points: ${String(e?.message ?? e).slice(0, 160)}`);
+  }
+
+  return { wallets, bridge, snapshots, vault, points, errors, tookMs: Date.now() - started };
 }

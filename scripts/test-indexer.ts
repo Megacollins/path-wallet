@@ -100,7 +100,8 @@ let txn = 0;
 const log = (block: number, kind: "dep" | "wd", who: string, amount: bigint): MockLog => ({ block, index: block % 7, kind, who, amount, tx: String(++txn) });
 
 async function reset() {
-  for (const t of ["chain_events", "indexer_state", "wallet_snapshots", "sessions", "wallets", "accounts"]) await query(`delete from ${t}`);
+  // TRUNCATE, not DELETE: the points ledger is append-only (the database refuses row deletes), and it references accounts.
+  await query(`truncate accounts, chain_events, indexer_state, wallet_snapshots cascade`);
   chain.head = 1_000_000;
   chain.maxRange = 12_000;
   chain.logs = [];
@@ -173,8 +174,8 @@ const count = async (where = "true") => Number((await query(`select count(*)::in
   process.env.INDEXER_LOOKBACK_BLOCKS = "400000";
   const start = safeOf() - 400_000;
   chain.logs = [20_000, 90_000, 170_000, 250_000, 330_000, 399_000].map((o) => log(start + o, "dep", ADDR(7), BigInt(o)));
-  chain.latencyMs = 30;
-  const partial = await syncVault(HADRIAN, { deadline: Date.now() + 20 });
+  chain.latencyMs = 150;
+  const partial = await syncVault(HADRIAN, { deadline: Date.now() + 100 });
   const st = await getState<{ next: number }>(`vault:${HADRIAN.chainId}`);
   check("vault: a deadline stops after a whole batch and saves exactly that progress", partial !== null && !partial.caughtUp && st?.next === start + 80_000 && (await count()) === 1, { partial, st, start });
   chain.latencyMs = 0;
@@ -228,8 +229,8 @@ const blocksOf = async () => (await query(`select (data->>'block')::int as b fro
   chain.logs = [320_000, 420_000, 520_000, 620_000, 720_000, 820_000].map((b) => log(b, "dep", ADDR(2), BigInt(b)));
   await syncVault(HADRIAN, { deadline: FAR() }); // forward only: establishes the origin
   process.env[BF_ENV] = "300000";
-  chain.latencyMs = 30;
-  const partial = await syncVault(HADRIAN, { deadline: Date.now() + 25 });
+  chain.latencyMs = 150;
+  const partial = await syncVault(HADRIAN, { deadline: Date.now() + 100 });
   const st = await bfState();
   check("backfill: a deadline stops after a whole batch and saves exactly that progress", partial?.backfill?.done === false && st?.next === 300_000 + 80_000 && JSON.stringify(await blocksOf()) === JSON.stringify([320_000]), { st, blocks: await blocksOf() });
   chain.latencyMs = 0;
@@ -432,6 +433,7 @@ const call = (h: (r: Request) => Promise<Response>, path: string, method: "GET" 
   chain.logs = [log(999_900, "dep", ADDR(0x41), 1n)];
   const partial = await runIndexer({ budgetMs: 30_000, force: true });
   check("run: a failing bridge API is reported but snapshots and the vault scan still complete", partial.errors.some((e) => e.startsWith("bridge")) && partial.vault.length === 1 && (await count("source = 'vault'")) === 1, partial);
+  check("run: every pass ends with the points step, even when a source failed", partial.points !== undefined && typeof partial.points.awarded === "number" && !partial.errors.some((e) => e.startsWith("points")), partial.points);
 }
 
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILED`);
