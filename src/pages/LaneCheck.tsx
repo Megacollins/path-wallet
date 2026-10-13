@@ -2,10 +2,10 @@
 // page (reach it at /lane-check): it reads state and asks the wallet to SIGN test data, but never sends a transaction.
 import { useCallback, useEffect, useState } from "react";
 import { formatUnits } from "viem";
-import { composeProbeWire, laneStatus, type LaneStatus } from "../../lib/romeSolana";
+import { laneStatus, probeLane, type LaneProbe, type LaneStatus, type Probe } from "../../lib/romeSolana";
 import { useCfg } from "../network";
 import { useWallets } from "../wallet";
-import { probeLaneSupport, type LaneSupport } from "../wallet/laneSigner";
+import { laneSignerFor } from "../wallet/laneSigner";
 import { ConnectPrompt } from "../components/ConnectPrompt";
 import { Button, Card, Copyable, Eyebrow, Spinner } from "../components/ui";
 
@@ -13,7 +13,7 @@ export function LaneCheck() {
   const cfg = useCfg();
   const { solana } = useWallets();
   const [status, setStatus] = useState<LaneStatus | null>(null);
-  const [support, setSupport] = useState<LaneSupport | null | "none">(null);
+  const [support, setSupport] = useState<(LaneProbe & { walletName: string }) | null | "none">(null);
   const [busy, setBusy] = useState(false);
 
   const key = solana.publicKey;
@@ -30,8 +30,9 @@ export function LaneCheck() {
     if (!key) return;
     setBusy(true);
     try {
-      const r = await probeLaneSupport(key, () => composeProbeWire(cfg, key));
-      setSupport(r ?? "none");
+      const found = await laneSignerFor(key, { connect: true });
+      if (!found) return setSupport("none");
+      setSupport({ ...(await probeLane(cfg, found.signer)), walletName: found.walletName });
     } finally {
       setBusy(false);
     }
@@ -85,15 +86,9 @@ export function LaneCheck() {
             {support === "none" && <p className="mt-4 text-sm text-terracotta-300">No Wallet Standard wallet holding this key was found, so the lane can't talk to your wallet directly yet.</p>}
             {support && support !== "none" && (
               <ul className="mt-4 space-y-3 text-sm">
-                <Result ok={support.message.ok} title="Sign the authorization message" detail={support.message.ok ? `${support.walletName} signed it.` : support.message.error} />
-                <Result ok={support.v1Wire.ok} title="Sign a v1 transaction" detail={support.v1Wire.ok ? `${support.walletName} signed a real composed v1 transaction.` : support.v1Wire.error} />
-                <li className="pt-1 text-xs leading-relaxed text-parchment/50">
-                  {support.message.ok && support.v1Wire.ok
-                    ? "Both work: the full lane (direct route and gas top-ups) is possible with this wallet."
-                    : support.message.ok
-                      ? "Messages work but v1 transactions don't: only the relay route is possible, and gas can't be topped up from this wallet."
-                      : "This wallet can't sign for the lane at all."}
-                </li>
+                <Result probe={support.message} title="Sign the authorization message" okText={`${support.walletName} signed it.`} />
+                <Result probe={support.v1Wire} title="Sign a v1 transaction" okText={`${support.walletName} signed a real composed v1 transaction, and the signature checks out. (Nothing was sent.)`} />
+                <li className="pt-1 text-xs leading-relaxed text-parchment/50">{verdict(support)}</li>
               </ul>
             )}
           </Card>
@@ -112,13 +107,23 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
-function Result({ ok, title, detail }: { ok: boolean; title: string; detail: string }) {
+function verdict(p: LaneProbe): string {
+  if (p.message.state === "ok" && p.v1Wire.state === "ok") return "Both work: the full lane (direct route and gas top-ups) is possible with this wallet.";
+  if (p.v1Wire.state === "failed") return p.message.state === "ok" ? "Messages work but your wallet can't sign v1 transactions: only the relay route is possible, and gas can't be topped up from this wallet." : "Your wallet couldn't sign for the lane.";
+  if (p.message.state === "failed") return "Your wallet couldn't sign the authorization message.";
+  return "Inconclusive: Rome's transaction builder stopped before your wallet was asked to sign the transaction, so this says nothing about your wallet yet. See the reason above.";
+}
+
+function Result({ probe, title, okText }: { probe: Probe; title: string; okText: string }) {
+  const tone = probe.state === "ok" ? "bg-emerald-500/20 text-emerald-300" : probe.state === "failed" ? "bg-terracotta-500/20 text-terracotta-300" : "bg-stone-700/60 text-parchment/60";
+  const mark = probe.state === "ok" ? "✓" : probe.state === "failed" ? "✕" : "?";
+  const detail = probe.state === "ok" ? okText : probe.state === "failed" ? probe.error : `Not tested: ${probe.reason}`;
   return (
     <li className="flex items-start gap-3">
-      <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] ${ok ? "bg-emerald-500/20 text-emerald-300" : "bg-terracotta-500/20 text-terracotta-300"}`}>{ok ? "✓" : "✕"}</span>
+      <span className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[11px] ${tone}`}>{mark}</span>
       <div className="min-w-0">
         <div className="text-parchment">{title}</div>
-        <div className={`break-words text-xs ${ok ? "text-parchment/50" : "text-terracotta-300"}`}>{detail}</div>
+        <div className={`break-words text-xs ${probe.state === "failed" ? "text-terracotta-300" : "text-parchment/50"}`}>{detail}</div>
       </div>
     </li>
   );

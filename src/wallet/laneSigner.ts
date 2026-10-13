@@ -3,8 +3,8 @@
 // (`solana:signTransaction` over RAW bytes). The legacy wallet adapter hands wallets web3.js Transaction objects, which
 // cannot carry the v1 wire format, so this talks to the wallet's Wallet Standard features directly.
 //
-// Whether a given wallet accepts a v1 wire is not guaranteed (Rome's docs say to check): `probeLaneSupport` finds out,
-// without sending anything, so the app can pick a route the wallet can actually use.
+// Whether a given wallet accepts a v1 wire is not guaranteed (Rome's docs say to check): `probeLane` (lib/romeSolana.ts)
+// finds out through the real submit path, without sending anything.
 import { getWallets } from "@wallet-standard/app";
 import type { Wallet, WalletAccount } from "@wallet-standard/base";
 import type { PublicKey } from "@solana/web3.js";
@@ -69,39 +69,4 @@ export async function laneSignerFor(publicKey: PublicKey, opts: { connect?: bool
     return { signer, walletName: wallet.name };
   }
   return null;
-}
-
-export type ProbeResult = { ok: true } | { ok: false; error: string };
-export interface LaneSupport {
-  walletName: string;
-  /** Can the wallet sign the readable "Rome authorization" message? Enough for the relay route. */
-  message: ProbeResult;
-  /** Can it sign a composed v1 transaction? Needed for the direct (atomic) route and for topping up gas. */
-  v1Wire: ProbeResult;
-}
-
-const msg = (e: unknown) => String((e as { message?: string })?.message ?? e).slice(0, 220);
-
-/**
- * Ask the wallet to sign (never send) a harmless message and a real composed v1 wire. `composeWire` is how the caller
- * gets a genuine v1 wire from Rome's composer for this payer; the signature is discarded, so nothing leaves the wallet.
- */
-export async function probeLaneSupport(publicKey: PublicKey, composeWire: () => Promise<Uint8Array>): Promise<LaneSupport | null> {
-  const found = await laneSignerFor(publicKey, { connect: true });
-  if (!found) return null;
-  const { signer, walletName } = found;
-  const result: LaneSupport = { walletName, message: { ok: false, error: "not tried" }, v1Wire: { ok: false, error: "not tried" } };
-  try {
-    const sig = await signer.signAuthHash(new TextEncoder().encode("Rome authorization check (nothing is sent)"));
-    result.message = sig.length === 64 ? { ok: true } : { ok: false, error: `unexpected signature length ${sig.length}` };
-  } catch (e) {
-    result.message = { ok: false, error: msg(e) };
-  }
-  try {
-    const sig = await signer.signV1Wire(await composeWire());
-    result.v1Wire = sig.length === 64 ? { ok: true } : { ok: false, error: `unexpected signature length ${sig.length}` };
-  } catch (e) {
-    result.v1Wire = { ok: false, error: msg(e) };
-  }
-  return result;
 }
