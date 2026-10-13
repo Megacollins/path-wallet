@@ -39,28 +39,71 @@ export function wusdcBalanceOf(cfg: RomeConfig, who: Hex): Promise<bigint> {
   return publicClient(cfg).readContract({ address: cfg.wusdc, abi: erc20Abi, functionName: "balanceOf", args: [who] }) as Promise<bigint>;
 }
 
+// ------------------------------ wrapped tokens: the one-time grant ------------------------------
+// Rome's SPL wrappers (wUSDC / wETH / wSOL) move a wallet's tokens as that wallet's SPL *delegate*, so each wallet must
+// send ONE grant per wrapper before the wrapper can transfer for it: `approve_spl(wrapper, 2^64-1, mint)` straight to
+// the Helper precompile. `wrapper.isEnabled(user)` says whether that has happened. The OLD wrappers (still listed by the
+// registry; see lib/wrappers.ts) have no `isEnabled` and revert on every approve/transfer since Rome's 2026-10-02
+// release. Wrapping gas USDC into wUSDC and the ERC-20 allowance (`approve`) don't need the grant; moving the tokens does.
+export const HELPER = "0xff00000000000000000000000000000000000009" as const;
+const WRAPPER_ABI = parseAbi(["function isEnabled(address user) view returns (bool)", "function mint_id() view returns (bytes32)"]);
+const HELPER_ABI = parseAbi(["function approve_spl(address spender, uint64 amount, bytes32 mint)"]);
+const U64_MAX = 2n ** 64n - 1n;
+
+export const LEGACY_WRAPPER_MESSAGE =
+  "This wrapped token is Rome's old version, which can no longer move tokens (a change in Rome's 2 Oct release). Nothing was spent. It needs Rome's redeployed wrapper.";
+export const SOLANA_GRANT_MESSAGE =
+  "Wrapped tokens need a one-time enable from your wallet, and that step isn't supported from Phantom yet. Use MetaMask for this for now. Nothing was spent.";
+
+/** The calldata of the one-time grant. Pure, so it can be tested without a chain. */
+export function buildGrantCall(wrapper: Hex, mint: Hex): { to: Hex; data: Hex } {
+  return { to: HELPER, data: encodeFunctionData({ abi: HELPER_ABI, functionName: "approve_spl", args: [wrapper, U64_MAX, mint] }) };
+}
+
 /**
- * Rome's wrapped-SPL tokens (wUSDC, wETH, wSOL) can be rejecting every approve/transfer: the
- * EVM program refuses a precompile signing as the caller through DELEGATECALL, which is how the
- * deployed wrappers reach it. Simulate a no-op approve from the user before spending anything, so
- * a flow that wraps/funds first can't strand the user's money half-way. Returns a user-facing
- * reason when blocked, or null (also null on unrelated RPC trouble — don't block on that).
+ * ready: can move this wallet's tokens · needs_grant: new wrapper, grant not sent yet · legacy: old wrapper (no
+ * `isEnabled`), can't move tokens at all · unknown: couldn't tell (network trouble is never treated as a verdict).
  */
-export async function wrapperBlocked(cfg: RomeConfig, from: Hex, token: Hex = cfg.wusdc): Promise<string | null> {
+export type WrapperState = "ready" | "needs_grant" | "legacy" | "unknown";
+
+export async function wrapperState(cfg: RomeConfig, user: Hex, token: Hex = cfg.wusdc): Promise<WrapperState> {
   try {
-    await publicClient(cfg).call({
-      account: from,
-      to: token,
-      data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: ["0x000000000000000000000000000000000000dEaD", 0n] }),
-    });
-    return null;
+    const on = await publicClient(cfg).readContract({ address: token, abi: WRAPPER_ABI, functionName: "isEnabled", args: [user] });
+    return on ? "ready" : "needs_grant";
   } catch (e: any) {
-    const msg = `${e?.shortMessage ?? ""} ${e?.details ?? ""} ${e?.message ?? ""}`;
-    if (/DELEGATECALL|signs as the caller/i.test(msg)) {
-      return "Rome's wrapped tokens (wUSDC, wETH, wSOL) are rejecting approvals and transfers right now. It's a chain-side change Rome has to fix. Nothing was spent.";
-    }
-    return null;
+    // A wrapper without `isEnabled` answers with an empty revert. Anything else (timeouts, HTTP errors) says nothing about the token.
+    return /revert/i.test(`${e?.shortMessage ?? ""} ${e?.message ?? ""}`) ? "legacy" : "unknown";
   }
+}
+
+/** Why a flow that only needs a working wrapper (not the grant) must not start; null when it may. */
+export async function wrapperBlocked(cfg: RomeConfig, user: Hex, token: Hex = cfg.wusdc): Promise<string | null> {
+  return (await wrapperState(cfg, user, token)) === "legacy" ? LEGACY_WRAPPER_MESSAGE : null;
+}
+
+/** Phantom lane: the grant can't be sent from there yet, so anything that must MOVE the synthetic's tokens is blocked up front. */
+export async function solanaWrapperBlocked(cfg: RomeConfig, synthetic: Hex, token: Hex = cfg.wusdc): Promise<string | null> {
+  const st = await wrapperState(cfg, synthetic, token);
+  return st === "legacy" ? LEGACY_WRAPPER_MESSAGE : st === "needs_grant" ? SOLANA_GRANT_MESSAGE : null;
+}
+
+/** EVM lane: send the one-time grant for `token` and wait until the wrapper reports it. */
+export async function grantWrapper(provider: Eip1193, from: Hex, cfg: RomeConfig, token: Hex = cfg.wusdc, symbol = "this token"): Promise<void> {
+  const mint = (await publicClient(cfg).readContract({ address: token, abi: WRAPPER_ABI, functionName: "mint_id" })) as Hex;
+  try {
+    await submitRomeTx(provider, { from, ...buildGrantCall(token, mint) });
+  } catch (e: any) {
+    // The grant sets a delegate on the wallet's token account, which only exists once the wallet has held the token.
+    if (/InvalidAccountData/i.test(`${e?.shortMessage ?? ""} ${e?.message ?? ""}`)) {
+      throw new Error(`You need to hold some ${symbol} before it can be enabled (your wallet has no ${symbol} account yet). Nothing was spent.`);
+    }
+    throw e;
+  }
+  for (let i = 0; i < 6; i++) {
+    if ((await wrapperState(cfg, from, token)) === "ready") return;
+    await new Promise((r) => setTimeout(r, 1500));
+  }
+  throw new Error("The enable transaction was sent but the token still isn't enabled. Give it a moment and try again.");
 }
 
 // ------------------------------ EVM lane (MetaMask) ------------------------------

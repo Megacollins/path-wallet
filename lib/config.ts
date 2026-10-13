@@ -1,5 +1,6 @@
 import { getChain, getTokens } from "@rome-protocol/registry";
 import type { Hex } from "viem";
+import { resolveWrapper } from "./wrappers.js";
 
 /** Everything the two lanes need — resolved from @rome-protocol/registry, no hardcoding. */
 export interface RomeConfig {
@@ -34,7 +35,8 @@ export function loadConfig(overrides: { chainId?: number; proxyUrl?: string; sol
     proxyUrl: overrides.proxyUrl || chain.rpcUrl,
     solanaRpc: overrides.solanaRpc || chain.solana.rpc,
     programId: chain.romeEvmProgramId,
-    wusdc: usdc.address as Hex,
+    // The registry still lists Rome's old (now broken) wrapper; see lib/wrappers.ts for when this swaps to the redeployed one.
+    wusdc: resolveWrapper(chainId, usdc.address, usdc.symbol).address as Hex,
     usdcMint: usdc.mintId,
     explorerUrl: chain.explorerUrl,
   };

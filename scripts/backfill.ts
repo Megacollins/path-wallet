@@ -80,9 +80,10 @@ for (const net of nets) {
     }
   }
 
-  // Reconcile: deposits minus withdrawals in our table must equal the contract's own running total,
+  // Reconcile (for the CURRENT Vault only: a redeployed Vault starts again from zero): deposits minus withdrawals in our
+  // table must equal the contract's own running total,
   // *if* the range covers the Vault's whole life. A difference means history before --from is missing.
-  const rows = await query(`select kind, count(*)::int as n, coalesce(sum(amount), 0)::text as total from chain_events where source = 'vault' and chain_id = $1 group by kind`, [net.chainId]);
+  const rows = await query(`select kind, count(*)::int as n, coalesce(sum(amount), 0)::text as total from chain_events where source = 'vault' and chain_id = $1 and lower(data->>'vault') = lower($2) group by kind`, [net.chainId, net.vault]);
   const sum = (k: string) => BigInt(String(rows.find((r) => r.kind === k)?.total ?? "0").split(".")[0]);
   const net_ = sum("vault_deposit") - sum("vault_withdraw");
   const onchain = BigInt(await rpc<string>(net.proxyUrl, "eth_call", [{ to: net.vault, data: "0x7d882097" }, "latest"])); // totalDeposits()

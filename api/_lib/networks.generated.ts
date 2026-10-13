@@ -14,8 +14,8 @@ export const NETWORKS: IndexedNetwork[] = [
     "chainName": "Rome Hadrian",
     "network": "devnet",
     "proxyUrl": "https://hadrian.testnet.romeprotocol.xyz/",
-    "vault": "0xaec0b79a84f985d0f91099c70892ae3e8f777fca",
-    "wusdc": "0xd4cc34b67c805d472b5a709a22a1037f6b16ef28"
+    "vault": "0xdedaa1ddfe6eedc6659b0ffaf47f3a37de715d94",
+    "wusdc": "0xBCE339BA4c3a8De3bB8Af1c5539e6ac11dA3112D"
   },
   {
     "chainId": 121214,
@@ -23,6 +23,6 @@ export const NETWORKS: IndexedNetwork[] = [
     "network": "testnet",
     "proxyUrl": "https://martius.testnet.romeprotocol.xyz/",
     "vault": null,
-    "wusdc": "0x2fffdfa11a9cef9210dc34e975649f09119c4efb"
+    "wusdc": "0xD3201Dc0F6fD1FE12c1FC297fb2B35927aD483B0"
   }
 ];

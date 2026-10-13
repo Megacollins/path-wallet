@@ -8,6 +8,7 @@ import * as rome from "../../lib/rome";
 import { useNetwork } from "../network";
 import { useWallets } from "../wallet";
 import { usePortfolio } from "../hooks/usePortfolio";
+import { useWrapperGrant } from "../hooks/useWrapperGrant";
 import { useToast } from "../components/Toast";
 import { ConnectPrompt } from "../components/ConnectPrompt";
 import { Button, Card, Copyable, Eyebrow, Skeleton } from "../components/ui";
@@ -17,6 +18,7 @@ type Lane = "evm" | "solana";
 export function Vault() {
   const { evm, solana, synthetic, anyConnected } = useWallets();
   const toast = useToast();
+  const { ensureEvm } = useWrapperGrant();
   const { cfg, networks, select } = useNetwork();
   const vault = cfg.vault;
   // The Vault is a deployed contract: it exists only on the chain(s) it was deployed to.
@@ -72,9 +74,14 @@ export function Vault() {
     }
   }
 
-  // Fail before anything is wrapped/funded if the token is rejecting approvals/transfers.
-  const guard = async (from: Hex) => {
-    const why = await rome.wrapperBlocked(cfg, from);
+  // Fail before anything is wrapped/funded when the token can't be used: an old wrapper (can't move tokens at all),
+  // or, on the Phantom lane, one that needs the one-time enable that lane can't send yet.
+  const guardEvm = async () => {
+    const why = await rome.wrapperBlocked(cfg, evm.address!);
+    if (why) throw new Error(why);
+  };
+  const guardSol = async () => {
+    const why = await rome.solanaWrapperBlocked(cfg, synthetic!);
     if (why) throw new Error(why);
   };
 
@@ -82,8 +89,10 @@ export function Vault() {
     run(
       "deposit",
       async () => {
-        await guard(evm.address!);
+        await guardEvm();
+        // Wrapping creates the wallet's wUSDC account; the one-time enable needs it, so it comes second.
         await rome.evmWrapToWusdc(evm.provider!, evm.address!, parseUnits(amount, 18));
+        await ensureEvm(cfg.wusdc, "wUSDC");
         await rome.evmApprove(evm.provider!, evm.address!, cfg, vault!, amt!);
         await rome.evmDeposit(evm.provider!, evm.address!, vault!, amt!);
       },
@@ -93,7 +102,7 @@ export function Vault() {
     run(
       "withdraw",
       async () => {
-        await guard(evm.address!);
+        await guardEvm();
         await rome.evmWithdraw(evm.provider!, evm.address!, vault!, amt!);
       },
       `Withdraw ${amount} wUSDC (EVM)`,
@@ -103,7 +112,7 @@ export function Vault() {
     run(
       "deposit",
       async () => {
-        await guard(synthetic!);
+        await guardSol();
         await rome.solanaFund(cfg, solana.publicKey!, solana.signTransaction!, amt!);
         await rome.solanaApprove(cfg, solana.publicKey!, solana.signTransaction!, vault!, amt!);
         await rome.solanaDeposit(cfg, solana.publicKey!, solana.signTransaction!, vault!, amt!);
@@ -114,7 +123,7 @@ export function Vault() {
     run(
       "withdraw",
       async () => {
-        await guard(synthetic!);
+        await guardSol();
         await rome.solanaWithdraw(cfg, solana.publicKey!, solana.signTransaction!, vault!, amt!);
         await rome.solanaSweep(cfg, solana.publicKey!, solana.signTransaction!, amt!);
       },
@@ -241,7 +250,7 @@ export function Vault() {
 
             <p className="mt-3 text-[11px] leading-relaxed text-parchment/40">
               {activeLane === "evm"
-                ? "EVM: wrap gas → wUSDC, approve, deposit — each via submitRomeTx."
+                ? "EVM: wrap gas → wUSDC, enable wUSDC (one confirmation, first deposit only), approve, deposit — each via submitRomeTx."
                 : "Solana: fund the synthetic, approve (auto-provisions), deposit — each via submitRomeTxSolanaLane. Withdraw sweeps back to your wallet."}
             </p>
           </Card>

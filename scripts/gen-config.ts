@@ -11,6 +11,7 @@ import { existsSync, writeFileSync } from "node:fs";
 import { listChains, getTokens, getBridge } from "@rome-protocol/registry";
 import { DEFAULT_CHAIN_ID, loadConfig } from "../lib/config.js";
 import type { BridgeSource, PathConfig, TokenMeta } from "../lib/assets.js";
+import { resolveWrapper } from "../lib/wrappers.js";
 
 // Secrets guard. A deploy must never carry a local .env (it holds private keys): .vercelignore keeps it out,
 // and this fails the build loudly if that ever stops working, instead of shipping the keys silently.
@@ -54,7 +55,12 @@ function project(chain: { chainId: number; name?: string; network?: string }): P
     solanaRpc: isDefault ? process.env.SOLANA_RPC : undefined,
   });
 
-  const tokens: TokenMeta[] = (getTokens(chain.chainId) ?? []).map((t: any) => ({
+  // SPL wrappers: swap in Rome's redeployed ones while the registry still lists the old (broken) addresses.
+  const tokens: TokenMeta[] = (getTokens(chain.chainId) ?? []).map((t: any) => {
+    const r = t.kind === "spl_wrapper" ? resolveWrapper(chain.chainId, t.address, t.symbol) : null;
+    if (r?.note) console.warn(`wrapper: ${r.note}`);
+    return { ...t, address: r?.address ?? t.address };
+  }).map((t: any) => ({
     address: t.address,
     mintId: t.mintId,
     symbol: t.symbol,

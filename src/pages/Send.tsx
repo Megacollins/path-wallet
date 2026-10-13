@@ -9,6 +9,7 @@ import * as rome from "../../lib/rome";
 import { useCfg } from "../network";
 import { useWallets } from "../wallet";
 import { usePortfolio } from "../hooks/usePortfolio";
+import { useWrapperGrant } from "../hooks/useWrapperGrant";
 import { useToast } from "../components/Toast";
 import { ConnectPrompt } from "../components/ConnectPrompt";
 import { Button, Card, Eyebrow, TokenGlyph } from "../components/ui";
@@ -19,6 +20,7 @@ export function Send() {
   const cfg = useCfg();
   const { evm, solana, anyConnected } = useWallets();
   const toast = useToast();
+  const { ensureEvm } = useWrapperGrant();
 
   const evmReady = Boolean(evm.address) && evm.isRome;
   const [lane, setLane] = useState<Lane>("evm");
@@ -55,9 +57,9 @@ export function Send() {
     amountBase > 0n &&
     (activeLane === "evm" ? evmReady : solana.connected && Boolean(solana.signTransaction));
 
-  // Wrapped tokens can reject every transfer chain-side; say so before the wallet prompt, not after.
-  async function requireUsable(from: Hex, tokenAddress?: Hex) {
-    const why = await rome.wrapperBlocked(cfg, from, tokenAddress);
+  // Phantom lane: wrapped tokens need a one-time enable that lane can't send yet. Say so before anything moves.
+  async function requireSolanaUsable(synthetic: Hex) {
+    const why = await rome.solanaWrapperBlocked(cfg, synthetic);
     if (why) throw new Error(why);
   }
 
@@ -75,7 +77,8 @@ export function Send() {
           await toast.run(
             `Send ${amount} ${token.symbol}`,
             async () => {
-              await requireUsable(from, token.address);
+              // First send of a wrapped token asks for the one-time enable (one extra MetaMask confirmation).
+              await ensureEvm(token.address, token.symbol);
               return rome.evmSendErc20(provider, from, token.address, to as Hex, amountBase);
             },
             { success: "Sent" },
@@ -85,7 +88,7 @@ export function Send() {
         await toast.run(
           `Send ${amount} wUSDC`,
           async () => {
-            await requireUsable(rome.syntheticFor(solana.publicKey!));
+            await requireSolanaUsable(rome.syntheticFor(solana.publicKey!));
             return rome.solanaSendWusdc(cfg, solana.publicKey!, solana.signTransaction!, to as Hex, amountBase);
           },
           { success: "Sent" },
@@ -152,6 +155,12 @@ export function Send() {
             </button>
           ))}
         </div>
+
+        {activeLane === "evm" && token?.kind === "spl_wrapper" && (
+          <p className="-mt-2 mb-4 text-[11px] leading-relaxed text-parchment/40">
+            The first time you send {token.symbol}, MetaMask asks you to enable it once. After that it's a single confirmation.
+          </p>
+        )}
 
         {/* Recipient */}
         <label className="label-eyebrow">Recipient (Rome EVM address)</label>
