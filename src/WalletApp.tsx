@@ -16,6 +16,7 @@ const Vault = lazy(() => import("./pages/Vault").then((m) => ({ default: m.Vault
 const Apps = lazy(() => import("./pages/Apps").then((m) => ({ default: m.Apps })));
 const Settings = lazy(() => import("./pages/Settings").then((m) => ({ default: m.Settings })));
 const Xp = lazy(() => import("./pages/Xp").then((m) => ({ default: m.Xp })));
+const LaneCheck = lazy(() => import("./pages/LaneCheck").then((m) => ({ default: m.LaneCheck })));
 
 function PageFallback() {
   return (
@@ -39,6 +40,7 @@ export function WalletApp() {
               <Route path="/apps" element={<Apps />} />
               <Route path="/settings" element={<Settings />} />
               <Route path={XP_PATH} element={<Xp />} />
+              <Route path="/lane-check" element={<LaneCheck />} />
               <Route path="*" element={<Dashboard />} />
             </Routes>
           </Suspense>
