@@ -9,6 +9,7 @@ import * as rome from "../../lib/rome";
 import { useCfg } from "../network";
 import { useWallets } from "../wallet";
 import { usePortfolio } from "../hooks/usePortfolio";
+import { useSolanaLane } from "../hooks/useSolanaLane";
 import { useWrapperGrant } from "../hooks/useWrapperGrant";
 import { useToast } from "../components/Toast";
 import { ConnectPrompt } from "../components/ConnectPrompt";
@@ -21,6 +22,7 @@ export function Send() {
   const { evm, solana, anyConnected } = useWallets();
   const toast = useToast();
   const { ensureEvm } = useWrapperGrant();
+  const lanePhantom = useSolanaLane();
 
   const evmReady = Boolean(evm.address) && evm.isRome;
   const [lane, setLane] = useState<Lane>("evm");
@@ -57,12 +59,6 @@ export function Send() {
     amountBase > 0n &&
     (activeLane === "evm" ? evmReady : solana.connected && Boolean(solana.signTransaction));
 
-  // Phantom lane: wrapped tokens need a one-time enable that lane can't send yet. Say so before anything moves.
-  async function requireSolanaUsable(synthetic: Hex) {
-    const why = await rome.solanaWrapperBlocked(cfg, synthetic);
-    if (why) throw new Error(why);
-  }
-
   async function onSend() {
     if (!token || amountBase == null) return;
     setBusy(true);
@@ -87,10 +83,7 @@ export function Send() {
       } else {
         await toast.run(
           `Send ${amount} wUSDC`,
-          async () => {
-            await requireSolanaUsable(rome.syntheticFor(solana.publicKey!));
-            return rome.solanaSendWusdc(cfg, solana.publicKey!, solana.signTransaction!, to as Hex, amountBase);
-          },
+          (note) => lanePhantom.send(to as Hex, amountBase, note),
           { success: "Sent" },
         );
       }
@@ -198,7 +191,7 @@ export function Send() {
         <p className="mt-3 text-[11px] leading-relaxed text-parchment/40">
           {activeLane === "evm"
             ? "Signed by MetaMask and submitted via submitRomeTx. Native sends cost ~1.48M gas on Rome."
-            : "Signed by Phantom and submitted via submitRomeTxSolanaLane. wUSDC is funded into your synthetic, then transferred."}
+            : "Signed by Phantom. Your USDC moves into your Rome account, then goes to the recipient. The first time also sets up your account and enables wUSDC, so expect several prompts."}
         </p>
       </Card>
     </PageWrap>

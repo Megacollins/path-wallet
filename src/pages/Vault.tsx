@@ -9,6 +9,7 @@ import { useNetwork } from "../network";
 import { useWallets } from "../wallet";
 import { usePortfolio } from "../hooks/usePortfolio";
 import { useWrapperGrant } from "../hooks/useWrapperGrant";
+import { useSolanaLane } from "../hooks/useSolanaLane";
 import { useToast } from "../components/Toast";
 import { ConnectPrompt } from "../components/ConnectPrompt";
 import { Button, Card, Copyable, Eyebrow, Skeleton } from "../components/ui";
@@ -19,6 +20,7 @@ export function Vault() {
   const { evm, solana, synthetic, anyConnected } = useWallets();
   const toast = useToast();
   const { ensureEvm } = useWrapperGrant();
+  const lanePhantom = useSolanaLane();
   const { cfg, networks, select } = useNetwork();
   const vault = cfg.vault;
   // The Vault is a deployed contract: it exists only on the chain(s) it was deployed to.
@@ -62,7 +64,7 @@ export function Vault() {
     void refresh();
   }, [refresh]);
 
-  async function run(kind: "deposit" | "withdraw", fn: () => Promise<unknown>, label: string) {
+  async function run(kind: "deposit" | "withdraw", fn: (note: (text: string) => void) => Promise<unknown>, label: string) {
     setBusy(kind);
     try {
       await toast.run(label, fn, { success: "Confirmed" });
@@ -74,14 +76,10 @@ export function Vault() {
     }
   }
 
-  // Fail before anything is wrapped/funded when the token can't be used: an old wrapper (can't move tokens at all),
-  // or, on the Phantom lane, one that needs the one-time enable that lane can't send yet.
+  // Fail before anything is wrapped/funded when the token can't be used: an old wrapper (can't move tokens at all).
+  // (The Phantom lane checks this itself, inside its plan.)
   const guardEvm = async () => {
     const why = await rome.wrapperBlocked(cfg, evm.address!);
-    if (why) throw new Error(why);
-  };
-  const guardSol = async () => {
-    const why = await rome.solanaWrapperBlocked(cfg, synthetic!);
     if (why) throw new Error(why);
   };
 
@@ -108,27 +106,8 @@ export function Vault() {
       `Withdraw ${amount} wUSDC (EVM)`,
     );
 
-  const solDeposit = () =>
-    run(
-      "deposit",
-      async () => {
-        await guardSol();
-        await rome.solanaFund(cfg, solana.publicKey!, solana.signTransaction!, amt!);
-        await rome.solanaApprove(cfg, solana.publicKey!, solana.signTransaction!, vault!, amt!);
-        await rome.solanaDeposit(cfg, solana.publicKey!, solana.signTransaction!, vault!, amt!);
-      },
-      `Deposit ${amount} wUSDC (Solana)`,
-    );
-  const solWithdraw = () =>
-    run(
-      "withdraw",
-      async () => {
-        await guardSol();
-        await rome.solanaWithdraw(cfg, solana.publicKey!, solana.signTransaction!, vault!, amt!);
-        await rome.solanaSweep(cfg, solana.publicKey!, solana.signTransaction!, amt!);
-      },
-      `Withdraw ${amount} wUSDC (Solana)`,
-    );
+  const solDeposit = () => run("deposit", (note) => lanePhantom.deposit(vault!, amt!, note), `Deposit ${amount} wUSDC (Solana)`);
+  const solWithdraw = () => run("withdraw", (note) => lanePhantom.withdraw(vault!, amt!, note), `Withdraw ${amount} wUSDC (Solana)`);
 
   const laneReady = activeLane === "evm" ? Boolean(evm.address) && evm.isRome : solana.connected && Boolean(solana.signTransaction);
   const canAct = Boolean(vault) && laneReady && amt != null && amt > 0n && !busy;
@@ -251,7 +230,7 @@ export function Vault() {
             <p className="mt-3 text-[11px] leading-relaxed text-parchment/40">
               {activeLane === "evm"
                 ? "EVM: wrap gas → wUSDC, enable wUSDC (one confirmation, first deposit only), approve, deposit — each via submitRomeTx."
-                : "Solana: fund the synthetic, approve (auto-provisions), deposit — each via submitRomeTxSolanaLane. Withdraw sweeps back to your wallet."}
+                : "Solana: your first time sets up your Rome account and enables wUSDC, so expect several Phantom prompts (and about 0.04 USDC of gas per step, topped up from your wallet). After that it is two. Withdraw sends the USDC back to your wallet."}
             </p>
           </Card>
 

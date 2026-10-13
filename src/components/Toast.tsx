@@ -17,7 +17,8 @@ interface ToastApi {
   update: (id: number, patch: Partial<Omit<Toast, "id">>) => void;
   dismiss: (id: number) => void;
   /** Run an async action with pending → success/error toasts. Returns the result. */
-  run: <T>(label: string, fn: () => Promise<T>, opts?: { success?: string }) => Promise<T>;
+  /** `fn` may call `note(text)` to change the pending toast's message as a multi-step action moves along. */
+  run: <T>(label: string, fn: (note: (text: string) => void) => Promise<T>, opts?: { success?: string }) => Promise<T>;
 }
 
 const Ctx = createContext<ToastApi | null>(null);
@@ -50,7 +51,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     async (label, fn, opts) => {
       const id = push({ kind: "pending", title: label, message: "Awaiting confirmation…" });
       try {
-        const result = await fn();
+        const result = await fn((text) => update(id, { message: text }));
         update(id, { kind: "success", title: opts?.success ?? "Confirmed", message: label });
         return result;
       } catch (e: any) {
