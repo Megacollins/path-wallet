@@ -3,7 +3,7 @@
 import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, NavLink, useLocation } from "react-router-dom";
-import { Check, ChevronsUpDown, LayoutGrid, SendHorizonal, Landmark, Compass, Settings2, Sparkles, Waypoints, Menu, X, type LucideIcon } from "lucide-react";
+import { Check, ChevronsUpDown, LayoutGrid, SendHorizonal, Landmark, Compass, Settings2, ShieldCheck, Sparkles, Waypoints, Menu, X, type LucideIcon } from "lucide-react";
 import { useAccount } from "../account";
 import { XP_NAME, XP_PATH } from "../lib/xp";
 import { useNetwork } from "../network";
@@ -20,6 +20,7 @@ const ICONS: Record<NavItem["icon"], LucideIcon> = {
   apps: Compass,
   settings: Settings2,
   xp: Sparkles,
+  admin: ShieldCheck,
 };
 
 function Icon({ name, className = "h-5 w-5" }: { name: NavItem["icon"]; className?: string }) {
@@ -32,7 +33,7 @@ export interface NavItem {
   label: string;
   /** Shorter label for the six-across bottom bar, which has ~48px per item at 320px. */
   short: string;
-  icon: "dashboard" | "send" | "bridge" | "vault" | "apps" | "settings" | "xp";
+  icon: "dashboard" | "send" | "bridge" | "vault" | "apps" | "settings" | "xp" | "admin";
   /** Set false to keep an item out of the phone bottom bar (it is already at its six-item limit at 320px). */
   bottom?: boolean;
 }
@@ -47,6 +48,9 @@ export const NAV: NavItem[] = [
   { to: "/apps", label: "Ecosystem", short: "Apps", icon: "apps" },
   { to: "/settings", label: "Settings", short: "Settings", icon: "settings" },
 ];
+
+/** Shown in the sidebar only to admins (the server decides who that is). Not in the phone bottom bar. */
+const ADMIN_ITEM: NavItem = { to: "/admin", label: "Admin", short: "Admin", icon: "admin", bottom: false };
 
 /* ------------------------------------------------- ChainBadge / switcher */
 // Shows the selected Rome chain and — when the registry publishes more than one — lets the user
@@ -127,9 +131,10 @@ function ChainBadge({ placement = "down", compact = false }: { placement?: "up" 
 
 /* ------------------------------------------------------- SidebarNav */
 function SidebarNav({ onNavigate }: { onNavigate?: () => void }) {
+  const { admin } = useAccount();
   return (
     <nav className="flex flex-col gap-1">
-      {NAV.map((item) => (
+      {(admin ? [...NAV, ADMIN_ITEM] : NAV).map((item) => (
         <NavLink
           key={item.to}
           to={item.to}

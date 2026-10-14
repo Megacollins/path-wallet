@@ -33,6 +33,8 @@ interface AccountState {
   signOut: () => Promise<void>;
   /** Does this connected wallet already belong to the signed-in account? */
   isLinked: (kind: Kind, address: string | null | undefined) => boolean;
+  /** Is this account an admin (a wallet from the server's ADMIN_WALLETS list is linked)? Decided by the server. */
+  admin: boolean;
   /** The account's XP (null until signed in and loaded, or if the API can't be reached). */
   xp: XpData | null;
   xpLoading: boolean;
@@ -64,6 +66,7 @@ export function AccountProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [xp, setXp] = useState<XpData | null>(null);
   const [xpLoading, setXpLoading] = useState(false);
+  const [admin, setAdmin] = useState(false);
 
   // Failures keep whatever XP we already show: a flaky load must not blank the page.
   const loadXp = useCallback(async () => {
@@ -122,6 +125,22 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       .then(() => loadXp())
       .catch(() => {});
   }, [account, loadXp]);
+
+  // Admin is the server's call, and linking a wallet can change it, so ask again whenever the account's wallets change.
+  const walletSig = account ? account.wallets.map((w) => w.address).sort().join(",") : "";
+  useEffect(() => {
+    if (!accountId) {
+      setAdmin(false);
+      return;
+    }
+    let alive = true;
+    api<{ admin?: boolean }>("/api/me")
+      .then((r) => alive && setAdmin(r.admin === true))
+      .catch(() => alive && setAdmin(false));
+    return () => {
+      alive = false;
+    };
+  }, [accountId, walletSig]);
 
   // A transaction just settled somewhere in the app: give the chain a moment, sync, and show the new XP. The server
   // throttles syncs, so when it says "wait", try again once it's over (the later sync still counts everything).
@@ -223,11 +242,12 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       unlink,
       signOut,
       isLinked: (kind, address) => Boolean(address && account?.wallets.some((w) => w.kind === kind && w.address === norm(kind, address))),
+      admin,
       xp,
       xpLoading,
       refreshXp,
     }),
-    [status, account, busy, error, run, unlink, signOut, xp, xpLoading, refreshXp],
+    [status, account, busy, error, run, unlink, signOut, admin, xp, xpLoading, refreshXp],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

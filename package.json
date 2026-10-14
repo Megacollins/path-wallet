@@ -19,9 +19,10 @@
     "test:points": "tsx scripts/test-points.ts",
     "smoke:evm": "tsx scripts/smoke-evm.ts",
     "test:wrappers": "tsx scripts/test-wrappers.ts",
-    "test": "npm run test:auth && npm run test:indexer && npm run test:points && npm run test:wrappers && npm run test:probe && npm run test:flow",
+    "test": "npm run test:auth && npm run test:indexer && npm run test:points && npm run test:wrappers && npm run test:probe && npm run test:flow && npm run test:admin",
     "test:probe": "tsx scripts/test-lane-probe.ts",
-    "test:flow": "tsx scripts/test-lane-flow.ts"
+    "test:flow": "tsx scripts/test-lane-flow.ts",
+    "test:admin": "tsx scripts/test-admin.ts"
   },
   "dependencies": {
     "@canton-network/dapp-sdk": "^1.7.1",

@@ -5,6 +5,7 @@ import { query } from "../db.js";
 import { NETWORKS } from "../networks.generated.js";
 import { syncBridgeForAddress } from "./bridge.js";
 import { snapshotAddress } from "./snapshots.js";
+import { setState } from "./state.js";
 import { scorePoints, type PointsSummary } from "../points/score.js";
 import { syncVault, type VaultSyncResult } from "./vault.js";
 
@@ -115,5 +116,8 @@ export async function runIndexer(opts: RunOptions): Promise<RunSummary> {
     errors.push(`points: ${String(e?.message ?? e).slice(0, 160)}`);
   }
 
-  return { wallets, bridge, snapshots, vault, points, errors, tookMs: Date.now() - started };
+  const summary: RunSummary = { wallets, bridge, snapshots, vault, points, errors, tookMs: Date.now() - started };
+  // Remember the latest pass of each kind so the admin view can show when the indexer last ran and how it went.
+  await setState(opts.accountId ? "indexer:last:account" : "indexer:last:all", { at: new Date().toISOString(), wallets, tookMs: summary.tookMs, awarded: points?.awarded ?? 0, errors: errors.length, firstError: errors[0] ?? null }).catch(() => {});
+  return summary;
 }
