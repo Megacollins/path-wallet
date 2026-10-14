@@ -4,7 +4,7 @@
   "functions": {
     "api/cron/index.ts": { "maxDuration": 60 },
     "api/account/sync.ts": { "maxDuration": 30 },
-    "api/admin/run.ts": { "maxDuration": 40 }
+    "api/admin/index.ts": { "maxDuration": 40 }
   },
   "crons": [{ "path": "/api/cron/index", "schedule": "0 4 * * *" }],
   "rewrites": [

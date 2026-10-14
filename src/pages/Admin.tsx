@@ -63,7 +63,7 @@ export function Admin() {
 
   const load = useCallback(async () => {
     try {
-      setData(await get<Overview>("/api/admin/overview"));
+      setData(await get<Overview>("/api/admin/index?view=overview"));
       setState("ok");
     } catch (e) {
       setState(e instanceof Forbidden ? "forbidden" : "error");
@@ -77,7 +77,7 @@ export function Admin() {
     setRunning(true);
     setRan(null);
     try {
-      const res = await fetch("/api/admin/run", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: "{}" });
+      const res = await fetch("/api/admin/index", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: "{}" });
       const body = await res.json();
       if (!res.ok) setRan(body?.message ?? "The run didn't start.");
       else setRan(`Done in ${(body.tookMs / 1000).toFixed(1)}s: ${body.wallets} wallets, ${body.points?.awarded ?? 0} ${XP_NAME} awarded${body.errors?.length ? `, ${body.errors.length} errors (first: ${body.errors[0]})` : ""}.`);
@@ -201,7 +201,7 @@ function Accounts({ open, setOpen }: { open: string | null; setOpen: (id: string
     let alive = true;
     const t = setTimeout(() => {
       setFailed(false);
-      get<{ total: number; rows: Row[] }>(`/api/admin/accounts?q=${encodeURIComponent(q)}&sort=${sort}&limit=${PAGE}&offset=${page * PAGE}`)
+      get<{ total: number; rows: Row[] }>(`/api/admin/index?view=accounts&q=${encodeURIComponent(q)}&sort=${sort}&limit=${PAGE}&offset=${page * PAGE}`)
         .then((d) => alive && setData(d))
         .catch(() => alive && setFailed(true));
     }, q ? 250 : 0); // wait for a pause in typing
@@ -283,7 +283,7 @@ function AccountDetail({ id }: { id: string }) {
     let alive = true;
     setD(null);
     setFailed(false);
-    get<Detail>(`/api/admin/account?id=${id}`)
+    get<Detail>(`/api/admin/index?view=account&id=${id}`)
       .then((x) => alive && setD(x))
       .catch(() => alive && setFailed(true));
     return () => {

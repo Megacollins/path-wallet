@@ -8,14 +8,13 @@ delete process.env.CRON_SECRET;
 delete process.env.POINTS_SEASON;
 delete process.env.ADMIN_WALLETS;
 
+import { readdirSync, statSync } from "node:fs";
+import path from "node:path";
 import { query } from "../api/_lib/db.js";
 import { startSession } from "../api/_lib/auth.js";
 import { accountDetail, adminWallets, isAdmin, listAccounts, overview } from "../api/_lib/admin.js";
 import * as meApi from "../api/me.js";
-import * as overviewApi from "../api/admin/overview.js";
-import * as accountsApi from "../api/admin/accounts.js";
-import * as accountApi from "../api/admin/account.js";
-import * as runApi from "../api/admin/run.js";
+import * as adminApi from "../api/admin/index.js";
 
 let failures = 0;
 const check = (name: string, ok: boolean, detail?: unknown) => {
@@ -63,7 +62,7 @@ const cUser = await cookieFor(user);
 
 {
   check("with ADMIN_WALLETS unset nobody is an admin, not even the account that would be", (await isAdmin(admin)) === false);
-  check("…and the admin endpoints answer 403 to everyone", (await call(overviewApi.GET, "GET", "/api/admin/overview", { cookie: cAdmin })).status === 403);
+  check("…and the admin endpoints answer 403 to everyone", (await call(adminApi.GET, "GET", "/api/admin/index?view=overview", { cookie: cAdmin })).status === 403);
 }
 
 process.env.ADMIN_WALLETS = `${EVM_ADMIN} ${SOL_ADMIN}`;
@@ -73,16 +72,16 @@ process.env.ADMIN_WALLETS = `${EVM_ADMIN} ${SOL_ADMIN}`;
   check("an account without a listed wallet is not", (await isAdmin(user)) === false);
 
   const endpoints: [string, (r: Request) => Promise<Response>, string][] = [
-    ["overview", overviewApi.GET, "/api/admin/overview"],
-    ["accounts", accountsApi.GET, "/api/admin/accounts"],
-    ["account", accountApi.GET, `/api/admin/account?id=${admin}`],
+    ["overview", adminApi.GET, "/api/admin/index?view=overview"],
+    ["accounts", adminApi.GET, "/api/admin/index?view=accounts"],
+    ["account", adminApi.GET, `/api/admin/index?view=account&id=${admin}`],
   ];
   for (const [name, h, path] of endpoints) {
     check(`${name}: signed out → 401`, (await call(h, "GET", path)).status === 401);
     check(`${name}: signed in but not an admin → 403`, (await call(h, "GET", path, { cookie: cUser })).status === 403);
     check(`${name}: an admin → 200`, (await call(h, "GET", path, { cookie: cAdmin })).status === 200);
   }
-  check("a Solana-wallet admin gets in as well", (await call(overviewApi.GET, "GET", "/api/admin/overview", { cookie: cAdminSol })).status === 200);
+  check("a Solana-wallet admin gets in as well", (await call(adminApi.GET, "GET", "/api/admin/index?view=overview", { cookie: cAdminSol })).status === 200);
 
   // Being on the list isn't enough on its own: the wallet has to be linked, and linking takes a signature.
   const stranger = await account([{ kind: "evm", address: hex(0xee) }]);
@@ -127,15 +126,15 @@ process.env.ADMIN_WALLETS = `${EVM_ADMIN} ${SOL_ADMIN}`;
   check("…the latest ledger rows, the Rome transaction count and the account's Vault events", d?.recent.length === 3 && d.romeTransactions.some((n) => n.count === 7) && d.events.some((e) => e.kind === "vault_deposit"), d);
   check("…and never anyone else's data (the other accounts' wallets don't appear)", !JSON.stringify(d).includes(EVM_ADMIN) && !JSON.stringify(d).includes(SOL_ADMIN));
   check("a malformed or unknown id is just 'not found'", (await accountDetail("not-a-uuid")) === null && (await accountDetail("00000000-0000-4000-8000-000000000000")) === null && (await accountDetail("'; select 1;--")) === null);
-  check("…over HTTP that is a 404", (await call(accountApi.GET, "GET", "/api/admin/account?id=nope", { cookie: cAdmin })).status === 404);
+  check("…over HTTP that is a 404", (await call(adminApi.GET, "GET", "/api/admin/index?view=account&id=nope", { cookie: cAdmin })).status === 404);
 }
 
 /* ----------------------------------------------------------- the one action */
 {
-  const post = (headers: Record<string, string>) => call(runApi.POST, "POST", "/api/admin/run", { "content-type": "application/json", origin: "http://localhost:5188", ...headers });
+  const post = (headers: Record<string, string>) => call(adminApi.POST, "POST", "/api/admin/index", { "content-type": "application/json", origin: "http://localhost:5188", ...headers });
   check("run: signed out → 401, non-admin → 403", (await post({})).status === 401 && (await post({ cookie: cUser })).status === 403);
   check("run: a cross-site request is refused before anything else", (await post({ cookie: cAdmin, origin: "https://evil.example" })).status === 403 && (await query(`select count(*)::int as n from indexer_state where key = 'admin:run'`))[0].n === 0);
-  check("run: a non-JSON post is refused (415)", (await call(runApi.POST, "POST", "/api/admin/run", { cookie: cAdmin, "content-type": "text/plain" })).status === 415);
+  check("run: a non-JSON post is refused (415)", (await call(adminApi.POST, "POST", "/api/admin/index", { cookie: cAdmin, "content-type": "text/plain" })).status === 415);
 
   const r = await post({ cookie: cAdmin });
   const body = await r.json();
@@ -144,6 +143,14 @@ process.env.ADMIN_WALLETS = `${EVM_ADMIN} ${SOL_ADMIN}`;
   check("…and the pass is remembered for the overview (when, how long, how many errors)", last && typeof last.at === "string" && last.wallets === 5 && typeof last.errors === "number", last);
   check("run: asking again straight away is turned away (429), so it can't be hammered", (await post({ cookie: cAdmin })).status === 429);
   check("the overview now reports that last run", (await overview()).indexer.lastFullRun?.wallets === 5);
+}
+
+/* ------------------------------------------------ Vercel's free-plan function cap */
+{
+  const walk = (dir: string): string[] => readdirSync(dir).flatMap((f) => (f.startsWith("_") ? [] : statSync(path.join(dir, f)).isDirectory() ? walk(path.join(dir, f)) : f.endsWith(".ts") ? [path.join(dir, f)] : []));
+  const fns = walk("api");
+  check(`the API stays within Vercel's free-plan limit of 12 functions (now ${fns.length}); fold new endpoints into an existing one`, fns.length <= 12, fns);
+  check("an unknown admin view is a 400, not a crash", (await call(adminApi.GET, "GET", "/api/admin/index?view=nope", { cookie: cAdmin })).status === 400);
 }
 
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILED`);
