@@ -1,6 +1,7 @@
 // Bridge transfers, from Rome's bridge API: GET /v1/transfers?address=<addr> returns every transfer that
 // address appears in (sender on any chain, or recipient), with its outcome as the transfer progresses.
 // We keep one row per transfer and update its status in place, so "pending" becomes "complete" on a later sync.
+import { normalizeAddress } from "../auth.js";
 import { query } from "../db.js";
 import { getState, setState } from "./state.js";
 
@@ -35,7 +36,7 @@ const validDate = (v: unknown) => (typeof v === "string" && !Number.isNaN(Date.p
 async function upsert(t: Transfer, fallbackActor: string): Promise<boolean> {
   if (!t || typeof t.id !== "string") return false;
   // The actor is whoever initiated it: the source-chain depositor (to-rome) or the Rome/Solana sender (from-rome).
-  const actor = lower(t.sender?.ethereum) ?? (typeof t.sender?.solana === "string" ? t.sender.solana : null) ?? lower(t.sender?.rome) ?? fallbackActor;
+  const actor = lower(t.sender?.ethereum) ?? (typeof t.sender?.solana === "string" ? (normalizeAddress("solana", t.sender.solana) ?? t.sender.solana) : null) ?? lower(t.sender?.rome) ?? fallbackActor;
   const route = String(t.route ?? "");
   const rows = await query(
     `insert into chain_events (source, kind, chain_id, address, amount, asset, external_id, status, occurred_at, completed_at, data)

@@ -114,7 +114,9 @@ contract SmartAccount {
     function disableModule(address module, bytes calldata data) external onlySelfOrOwner {
         require(isModule[module], "SA: module disabled");
         isModule[module] = false;
-        IAccountModule(module).onUninstall(data);
+        // A module must never be able to refuse to be removed: it holds the power to execute as this account, so a
+        // hook that reverts or burns gas would otherwise make it permanent. The hook is best-effort and gas-capped.
+        try IAccountModule(module).onUninstall{gas: 300_000}(data) {} catch {}
         emit ModuleDisabled(module);
     }
 

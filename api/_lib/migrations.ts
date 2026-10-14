@@ -125,4 +125,32 @@ export const MIGRATIONS: { id: string; statements: string[] }[] = [
        end $$`,
     ],
   },
+  {
+    id: "004_hardening",
+    statements: [
+      // Fixed-window rate limits (see api/_lib/limits.ts). One row per caller per scope per window; expired rows are swept.
+      `create table if not exists rate_limits (
+         key text primary key,
+         n integer not null,
+         expires_at timestamptz not null
+       )`,
+      `create index if not exists rate_limits_expires_idx on rate_limits (expires_at)`,
+      // The wallet cap per account and lane, enforced by the database. A check-then-insert in code lets simultaneous
+      // requests all pass the check; here the account row is locked first, so inserts for one account queue up.
+      // The number must match MAX_WALLETS_PER_KIND in api/_lib/auth.ts (a test asserts it).
+      `create or replace function wallets_limit() returns trigger language plpgsql as $$
+         declare n integer;
+         begin
+           perform 1 from accounts where id = new.account_id for update;
+           select count(*) into n from wallets where account_id = new.account_id and kind = new.kind;
+           if n >= 5 then raise exception 'wallet_limit'; end if;
+           return new;
+         end $$`,
+      `do $$ begin
+         if not exists (select 1 from pg_trigger where tgname = 'wallets_limit_trg') then
+           create trigger wallets_limit_trg before insert on wallets for each row execute function wallets_limit();
+         end if;
+       end $$`,
+    ],
+  },
 ];

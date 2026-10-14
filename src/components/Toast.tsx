@@ -45,7 +45,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     (id: number, patch: Partial<Omit<Toast, "id">>) => {
       setToasts((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)));
       // Failures stay long enough to actually read; they explain what to do next.
-      if (patch.kind && patch.kind !== "pending") setTimeout(() => dismiss(id), patch.kind === "error" ? 20000 : 6000);
+      if (patch.kind && patch.kind !== "pending") setTimeout(() => dismiss(id), patch.kind === "error" || patch.kind === "info" ? 20000 : 6000);
     },
     [dismiss],
   );
@@ -60,7 +60,9 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         window.dispatchEvent(new Event(TX_SETTLED));
         return result;
       } catch (e: any) {
-        update(id, { kind: "error", title: "Transaction failed", message: cleanErr(e) });
+        // A notice (for example "that already went through, so it wasn't repeated") is information, not a failure.
+        if (e?.notice) update(id, { kind: "info", title: "Heads up", message: cleanErr(e) });
+        else update(id, { kind: "error", title: "Transaction failed", message: cleanErr(e) });
         throw e;
       }
     },
@@ -112,7 +114,8 @@ function icon(kind: Kind) {
 
 function cleanErr(e: any): string {
   const msg = e?.shortMessage ?? e?.message ?? String(e);
-  return msg.length > 180 ? msg.slice(0, 177) + "…" : msg;
+  const max = e?.notice ? 480 : 180; // notices carry instructions ("don't repeat it"): keep them whole
+  return msg.length > max ? msg.slice(0, max - 3) + "…" : msg;
 }
 
 export function useToast(): ToastApi {

@@ -29,7 +29,11 @@ const COOLDOWN_MS = Number(process.env.FAUCET_COOLDOWN_HOURS ?? "24") * 3600_000
 const MAX_PER_IP_HOUR = Number(process.env.FAUCET_MAX_PER_IP_HOUR ?? "3");
 const MAX_DAILY = Number(process.env.FAUCET_MAX_DAILY ?? "300");
 const PORT = Number(process.env.FAUCET_PORT ?? "8787");
-const ALLOW_ORIGIN = process.env.FAUCET_ALLOW_ORIGIN ?? "*";
+// Origins allowed to call the faucet from a browser (comma-separated). Never "*" by default.
+const ALLOW_ORIGINS = (process.env.FAUCET_ALLOW_ORIGIN ?? "http://localhost:5188").split(",").map((s) => s.trim()).filter(Boolean);
+// Only trust X-Forwarded-For when a proxy you control sits in front (FAUCET_TRUST_PROXY=1), and then only its LAST hop:
+// every earlier entry is whatever the client chose to send.
+const TRUST_PROXY = process.env.FAUCET_TRUST_PROXY === "1";
 
 /* --------------------------------------------------------- persisted state */
 const STATE_FILE = fileURLToPath(new URL("./.faucet-state.json", import.meta.url));
@@ -79,7 +83,7 @@ function recordClaim(address: string, ip: string) {
 
 /* -------------------------------------------------------------- http server */
 function cors(res: http.ServerResponse) {
-  res.setHeader("Access-Control-Allow-Origin", ALLOW_ORIGIN);
+  res.setHeader("Vary", "Origin");
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "content-type");
 }
@@ -90,6 +94,10 @@ function json(res: http.ServerResponse, code: number, body: unknown) {
 }
 
 const server = http.createServer((req, res) => {
+  // Set per request (never in shared state): echo the caller's origin only if it is on the allow-list.
+  const origin = String(req.headers.origin ?? "");
+  if (ALLOW_ORIGINS.includes("*")) res.setHeader("Access-Control-Allow-Origin", "*");
+  else if (ALLOW_ORIGINS.includes(origin)) res.setHeader("Access-Control-Allow-Origin", origin);
   if (req.method === "OPTIONS") { cors(res); res.writeHead(204); return res.end(); }
   if (req.method === "GET" && req.url === "/health") return json(res, 200, { ok: true, treasury: treasury.address, chainId: cfg.chainId, amountUsdc: AMOUNT_USDC });
   if (req.method !== "POST" || !req.url?.startsWith("/api/faucet")) return json(res, 404, { ok: false, error: "Not found" });
@@ -99,7 +107,8 @@ const server = http.createServer((req, res) => {
   req.on("end", async () => {
     try {
       const { address } = JSON.parse(raw || "{}");
-      const ip = (req.headers["x-forwarded-for"]?.toString().split(",")[0] || req.socket.remoteAddress || "?").trim();
+      const forwarded = req.headers["x-forwarded-for"]?.toString().split(",").map((x) => x.trim()).filter(Boolean).pop();
+      const ip = (TRUST_PROXY && forwarded ? forwarded : req.socket.remoteAddress || "?").trim();
       if (typeof address !== "string") return json(res, 400, { ok: false, error: "Provide an address." });
 
       const blocked = checkLimits(address, ip);

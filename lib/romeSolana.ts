@@ -24,17 +24,26 @@ export interface LaneStatus {
 
 export const solanaConnection = (cfg: RomeConfig) => new Connection(cfg.solanaRpc, "confirmed");
 
-/** Everything the Solana lane needs to know about a wallet, in parallel. A failed read becomes zero, never an exception. */
-export async function laneStatus(cfg: RomeConfig, wallet: PublicKey): Promise<LaneStatus> {
+/**
+ * Everything the Solana lane needs to know about a wallet, in parallel. For DISPLAY a failed read becomes zero. For
+ * ACTING pass `strict`: a read that failed then throws, because a zero that really means "couldn't tell" would make
+ * the planner top up gas, or move funds, that it doesn't need to.
+ */
+export async function laneStatus(cfg: RomeConfig, wallet: PublicKey, opts: { strict?: boolean } = {}): Promise<LaneStatus> {
+  const soft = <T,>(p: Promise<T>, fallback: T): Promise<T> => (opts.strict ? p : p.catch(() => fallback));
   const connection = solanaConnection(cfg);
   const synthetic = syntheticAddress(wallet);
   const ata = getAssociatedTokenAddressSync(new PublicKey(cfg.usdcMint), wallet);
   const [lamports, walletUsdc, provisioned, gasWei, syntheticWusdc] = await Promise.all([
-    connection.getBalance(wallet).then(BigInt).catch(() => 0n),
-    connection.getTokenAccountBalance(ata).then((r) => BigInt(r.value.amount)).catch(() => 0n),
-    isSyntheticProvisioned(connection, cfg.programId, synthetic).catch(() => false),
-    publicClient(cfg).getBalance({ address: synthetic }).catch(() => 0n),
-    wusdcBalanceOf(cfg, synthetic).catch(() => 0n),
+    soft(connection.getBalance(wallet).then(BigInt), 0n),
+    // A wallet with no USDC account yet legitimately has none: that is a zero, not a failed read.
+    connection.getTokenAccountBalance(ata).then((r) => BigInt(r.value.amount)).catch((e) => {
+      if (opts.strict && !/could not find account|invalid param/i.test(String(e?.message ?? e))) throw e;
+      return 0n;
+    }),
+    soft(isSyntheticProvisioned(connection, cfg.programId, synthetic), false),
+    soft(publicClient(cfg).getBalance({ address: synthetic }), 0n),
+    soft(wusdcBalanceOf(cfg, synthetic), 0n),
   ]);
   return { synthetic, lamports, walletUsdc, provisioned, gasWei, syntheticWusdc };
 }

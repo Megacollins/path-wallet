@@ -40,6 +40,7 @@ const bridge = (address: string, amountBase: number | null, status: string, comp
 const vault = (address: string, kind: "vault_deposit" | "vault_withdraw", at: string) =>
   query(`insert into chain_events (source, kind, chain_id, address, amount, external_id, occurred_at) values ('vault', $1, $2, $3, 1000000, $4, $5)`, [kind, HADRIAN, address, `0xv${++seq}:0`, at]);
 const total = async (accountId: string, season = "devnet-1") => Number((await query(`select coalesce(sum(points), 0)::int as p from points_ledger where account_id = $1 and season = $2`, [accountId, season]))[0].p);
+const pts = async (rule: string, accountId?: string) => Number((await query(`select coalesce(sum(points), 0)::int as n from points_ledger where rule = $1 and ($2::uuid is null or account_id = $2::uuid)`, [rule, accountId ?? null]))[0].n);
 const rows = async (rule: string, accountId?: string) => Number((await query(`select count(*)::int as n from points_ledger where rule = $1 and ($2::uuid is null or account_id = $2::uuid)`, [rule, accountId ?? null]))[0].n);
 const cookieFor = async (accountId: string) => (await startSession(new Request("http://localhost:5188/"), accountId)).split(";")[0];
 const get = (h: (r: Request) => Promise<Response>, path: string, headers: Record<string, string> = {}) => h(new Request("http://localhost:5188" + path, { method: "GET", headers: { host: "localhost:5188", ...headers } }));
@@ -57,22 +58,25 @@ const get = (h: (r: Request) => Promise<Response>, path: string, headers: Record
   const r1 = await scorePoints();
   check("3 new transactions = 3 tx points + 5 for the active day", r1.awarded === 8 && r1.byRule.tx_activity === 3 && r1.byRule.active_day === 5, r1);
   const refs = (await query(`select ref from points_ledger where rule = 'tx_activity' order by ref`)).map((r) => r.ref);
-  check("each transaction slot is its own row with a deterministic ref", JSON.stringify(refs) === JSON.stringify([`${E}:2026-10-09:1`, `${E}:2026-10-09:2`, `${E}:2026-10-09:3`]), refs);
+  check("a wallet-day is ONE row with a deterministic ref naming the total it brings the day to", JSON.stringify(refs) === JSON.stringify([`${E}:2026-10-09:3`]), refs);
   check("scoring again changes nothing", (await scorePoints()).awarded === 0);
 
   await snap(E, HADRIAN, 16, "2026-10-09T18:00:00Z");
   const r2 = await scorePoints();
-  check("later activity the same day adds only the new slots (no second active-day bonus)", r2.awarded === 3 && r2.byRule.active_day === undefined && (await rows("tx_activity")) === 6, r2);
+  check("later activity the same day adds only the new transactions as one more row (no second active-day bonus)", r2.awarded === 3 && r2.byRule.active_day === undefined && (await pts("tx_activity")) === 6 && (await rows("tx_activity")) === 2, r2);
 
   await snap(E, HADRIAN, 100, "2026-10-09T20:00:00Z"); // +84 more the same day
   const r3 = await scorePoints();
-  check("a burst is paid in full: every one of the 90 transactions that day earns its point", (await rows("tx_activity")) === 90 && r3.awarded === 84, { rows: await rows("tx_activity"), r3 });
+  check("a burst is paid in full (up to the account cap): all 90 transactions that day earn a point, in just 3 rows", (await pts("tx_activity")) === 90 && (await rows("tx_activity")) === 3 && r3.awarded === 84, { pts: await pts("tx_activity"), rows: await rows("tx_activity"), r3 });
   check("…and a re-run is a no-op", (await scorePoints()).awarded === 0);
 
   await snap(E, HADRIAN, 101, "2026-10-10T01:00:00Z");
   const r4 = await scorePoints();
-  check("the next UTC day starts fresh: 1 tx + a new active-day bonus", r4.awarded === 6 && (await rows("active_day")) === 2, r4);
-  check("the account's balance is the sum of its ledger rows", (await total(A)) === 8 + 3 + 84 + 6, await total(A));
+  check("the next UTC day starts fresh, but ONE transaction doesn't make an active day (it takes 2)", r4.awarded === 1 && (await rows("active_day")) === 1, r4);
+  await snap(E, HADRIAN, 102, "2026-10-10T02:00:00Z");
+  const r5 = await scorePoints();
+  check("…the second one that day does: 1 tx + the active-day bonus", r5.awarded === 6 && (await rows("active_day")) === 2, r5);
+  check("the account's balance is the sum of its ledger rows", (await total(A)) === 8 + 3 + 84 + 1 + 6, await total(A));
 }
 
 {
@@ -96,7 +100,7 @@ const get = (h: (r: Request) => Promise<Response>, path: string, headers: Record
   await snap(E, HADRIAN, 15, "2026-10-09T12:00:00Z");
   await snap(E, MARTIUS, 15, "2026-10-09T12:00:00Z");
   await scorePoints();
-  check("transactions on every chain count (15 on each of two chains → 30 points, one active-day bonus)", (await rows("tx_activity")) === 30 && (await rows("active_day")) === 1);
+  check("transactions on every chain count (15 on each of two chains → 30 points, one active-day bonus)", (await pts("tx_activity")) === 30 && (await rows("active_day")) === 1);
 }
 
 {
@@ -106,13 +110,21 @@ const get = (h: (r: Request) => Promise<Response>, path: string, headers: Record
   await snap(E, HADRIAN, 0, "2026-10-09T08:00:00Z");
   await snap(E, HADRIAN, 500, "2026-10-09T12:00:00Z");
   await scorePoints();
-  check("a 500-transaction day is paid in full, with the default rules", (await rows("tx_activity")) === 500);
+  check("with the default rules an account's transaction XP is capped at 100 a day (what a throwaway account can farm)", (await pts("tx_activity")) === 100, await pts("tx_activity"));
+  await scorePoints();
+  check("…and scoring again changes nothing", (await pts("tx_activity")) === 100 && (await rows("tx_activity")) === 1);
   await reset();
   await account([{ kind: "evm", address: E }]);
   await snap(E, HADRIAN, 0, "2026-10-09T08:00:00Z");
   await snap(E, HADRIAN, 500, "2026-10-09T12:00:00Z");
-  await scorePoints({ rules: { ...RULES, tx_activity: { enabled: true, perTx: 1, dailyCapPerWallet: 20 } } });
-  check("a cap can still be switched on in the rules (kept as a knob, off by default)", (await rows("tx_activity")) === 20);
+  await scorePoints({ rules: { ...RULES, tx_activity: { ...RULES.tx_activity, dailyCapPerAccount: null } } });
+  check("with the account cap switched off, a 500-transaction day is paid in full as ONE row", (await pts("tx_activity")) === 500 && (await rows("tx_activity")) === 1);
+  await reset();
+  await account([{ kind: "evm", address: E }]);
+  await snap(E, HADRIAN, 0, "2026-10-09T08:00:00Z");
+  await snap(E, HADRIAN, 500, "2026-10-09T12:00:00Z");
+  await scorePoints({ rules: { ...RULES, tx_activity: { ...RULES.tx_activity, dailyCapPerWallet: 20, dailyCapPerAccount: null } } });
+  check("a per-wallet cap can still be switched on in the rules", (await pts("tx_activity")) === 20);
 }
 
 {
@@ -154,17 +166,20 @@ const get = (h: (r: Request) => Promise<Response>, path: string, headers: Record
   const Y = hex(0xc2); // the Solana lane's synthetic Rome address
   const A = await account([{ kind: "evm", address: E }, { kind: "solana", address: "SoLaNaKeyForTestingOnly1111111111111111111111", synthetic: Y }]);
   await snap(E, HADRIAN, 0, "2026-10-09T08:00:00Z");
-  await snap(E, HADRIAN, 1, "2026-10-09T09:00:00Z");
+  await snap(E, HADRIAN, 5, "2026-10-09T09:00:00Z");
   const evmOnly = await scorePoints();
-  check("an EVM transaction alone does not earn the dual-lane bonus", evmOnly.byRule.dual_lane === undefined && evmOnly.awarded === 6, evmOnly);
+  check("EVM activity alone does not earn the dual-lane bonus", evmOnly.byRule.dual_lane === undefined && evmOnly.awarded === 10, evmOnly);
   await snap(Y, HADRIAN, 0, "2026-10-09T08:00:00Z");
   await snap(Y, HADRIAN, 2, "2026-10-09T09:30:00Z");
+  const few = await scorePoints();
+  check("a couple of Solana-lane transactions are not enough for the dual-lane bonus (each lane needs 5)", few.byRule.dual_lane === undefined && (await rows("dual_lane", A)) === 0, few);
+  await snap(Y, HADRIAN, 5, "2026-10-09T10:30:00Z");
   const both = await scorePoints();
-  check("once the Solana lane has transacted too, +50 once", both.byRule.dual_lane === 50 && (await rows("dual_lane", A)) === 1, both);
+  check("once the Solana lane has sent 5 too, +50 once", both.byRule.dual_lane === 50 && (await rows("dual_lane", A)) === 1, both);
   const ref = (await query(`select ref from points_ledger where rule = 'dual_lane'`))[0].ref;
   check("the dual-lane award is keyed by account (one per account, ever)", ref === A, ref);
   check("…and never repeats", (await scorePoints()).byRule.dual_lane === undefined);
-  check("the Solana lane's activity is credited to the account through its synthetic address", (await rows("tx_activity", A)) === 3);
+  check("the Solana lane's activity is credited to the account through its synthetic address", (await pts("tx_activity", A)) === 10, await pts("tx_activity", A));
 }
 
 /* ---------------------------------------- a wallet that moves between accounts */
@@ -229,7 +244,7 @@ const get = (h: (r: Request) => Promise<Response>, path: string, headers: Record
   await snap(E, HADRIAN, 60, "2026-10-09T09:00:00Z");
   for (let i = 0; i < 5; i++) await bridge(E, 1_500_000, "complete", `2026-10-09T10:0${i}:00Z`);
   await Promise.all([scorePoints(), scorePoints(), scorePoints()]);
-  check("three scorers racing produce exactly one scorer's result: no duplicates, caps intact", (await total(A)) === 60 + 5 + 75 && (await query(`select count(*)::int as n from points_ledger`))[0].n === 64, { total: await total(A) });
+  check("three scorers racing produce exactly one scorer's result: no duplicates, caps intact (one tx row, one active day, three bridge-ins)", (await total(A)) === 60 + 5 + 75 && (await query(`select count(*)::int as n from points_ledger`))[0].n === 5, { total: await total(A), rows: (await query(`select count(*)::int as n from points_ledger`))[0].n });
 }
 
 {
@@ -276,4 +291,6 @@ const get = (h: (r: Request) => Promise<Response>, path: string, headers: Record
 }
 
 console.log(failures === 0 ? "\nALL PASSED" : `\n${failures} FAILED`);
+// Let in-flight handles finish closing first: on Windows an immediate exit can trip a libuv assertion (exit code 127) after a PASS.
+await new Promise((r) => setTimeout(r, 200));
 process.exit(failures === 0 ? 0 : 1);

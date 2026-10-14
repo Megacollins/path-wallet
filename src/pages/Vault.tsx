@@ -3,7 +3,7 @@
 // Rome's single-state, two-lane model. Extends the scaffold's flows in lib/rome.ts.
 import { useCallback, useEffect, useState } from "react";
 import { formatUnits, parseUnits, type Hex } from "viem";
-import { parseAmountSafe } from "../../lib/format";
+import { amountString, baseUnitsOf, parseAmountSafe } from "../../lib/format";
 import * as rome from "../../lib/rome";
 import { useNetwork } from "../network";
 import { useWallets } from "../wallet";
@@ -88,6 +88,7 @@ export function Vault() {
       "deposit",
       async () => {
         await guardEvm();
+        if (portfolio != null && amt! > depositMaxBase) throw new Error(`That is more than you can deposit now (up to ${amountString(depositMax, 6)}; some USDC is kept back to pay gas).`);
         // Wrapping creates the wallet's wUSDC account; the one-time enable needs it, so it comes second.
         await rome.evmWrapToWusdc(evm.provider!, evm.address!, parseUnits(amount, 18));
         await ensureEvm(cfg.wusdc, "wUSDC");
@@ -111,6 +112,12 @@ export function Vault() {
 
   const laneReady = activeLane === "evm" ? Boolean(evm.address) && evm.isRome : solana.connected && Boolean(solana.signTransaction);
   const canAct = Boolean(vault) && laneReady && amt != null && amt > 0n && !busy;
+  // Typing a number is not the same as being allowed it: more than the wallet can spare would wrap its gas away (EVM
+  // lane) or fail half-way. Only judged once the balances are actually known; an unknown balance never blocks.
+  const depositMaxBase = baseUnitsOf(depositMax, 6);
+  const depositTooMuch = portfolio != null && amt != null && amt > depositMaxBase;
+  const vaultKnown = (activeLane === "evm" ? evmBal : synthBal) != null;
+  const withdrawTooMuch = vaultKnown && amt != null && amt > baseUnitsOf(vaultBalance, 6);
 
   return (
     <div className="space-y-6">
@@ -194,7 +201,7 @@ export function Vault() {
                   Wallet: <span className="tabular text-parchment/80">{walletBalance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>{" "}
                   {walletSymbol}
                   <button
-                    onClick={() => setAmount(String(depositMax))}
+                    onClick={() => setAmount(amountString(depositMax, 6))}
                     disabled={Boolean(busy) || depositMax <= 0}
                     className="-my-1.5 ml-1 px-1.5 py-1.5 text-champagne-200 hover:text-champagne-100 disabled:opacity-40"
                   >
@@ -209,7 +216,7 @@ export function Vault() {
                 In vault: <span className="tabular ml-1 text-parchment/60">{vaultBalance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>{" "}
                 wUSDC
                 <button
-                  onClick={() => setAmount(String(vaultBalance))}
+                  onClick={() => setAmount(amountString(vaultBalance, 6))}
                   disabled={Boolean(busy) || vaultBalance <= 0}
                   className="-my-1.5 ml-1 px-1.5 py-1.5 text-champagne-200 hover:text-champagne-100 disabled:opacity-40"
                 >
@@ -219,13 +226,19 @@ export function Vault() {
             )}
 
             <div className="mt-5 grid grid-cols-2 gap-3">
-              <Button variant="gold" onClick={activeLane === "evm" ? evmDeposit : solDeposit} loading={busy === "deposit"} disabled={!canAct}>
+              <Button variant="gold" onClick={activeLane === "evm" ? evmDeposit : solDeposit} loading={busy === "deposit"} disabled={!canAct || depositTooMuch}>
                 Deposit
               </Button>
-              <Button variant="ghost" onClick={activeLane === "evm" ? evmWithdraw : solWithdraw} loading={busy === "withdraw"} disabled={!canAct}>
+              <Button variant="ghost" onClick={activeLane === "evm" ? evmWithdraw : solWithdraw} loading={busy === "withdraw"} disabled={!canAct || withdrawTooMuch}>
                 Withdraw
               </Button>
             </div>
+            {(depositTooMuch || withdrawTooMuch) && (
+              <p className="mt-2 text-xs text-terracotta-300">
+                {depositTooMuch && `You can deposit up to ${amountString(depositMax, 6)} ${walletSymbol} right now${activeLane === "evm" ? " (about 0.3 is kept back to pay gas)" : ""}. `}
+                {withdrawTooMuch && `You can withdraw up to ${amountString(vaultBalance, 6)} wUSDC.`}
+              </p>
+            )}
 
             <p className="mt-3 text-[11px] leading-relaxed text-parchment/40">
               {activeLane === "evm"

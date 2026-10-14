@@ -12,8 +12,24 @@ interface Driver {
 
 let opening: Promise<Driver> | null = null;
 
+let warned = false;
+/**
+ * The database to use. On Vercel: DATABASE_URL. On a developer's machine: NOT the DATABASE_URL in .env unless
+ * ALLOW_LOCAL_PROD_DB=1, because that one is usually production, and `npm run dev` or a test would then write test
+ * accounts and sessions into real data. Locally you get DEV_DATABASE_URL if set, else the throwaway in-process Postgres.
+ */
+export function databaseUrl(env: Record<string, string | undefined> = process.env): string {
+  const url = env.DATABASE_URL?.trim() ?? "";
+  if (env.VERCEL || env.ALLOW_LOCAL_PROD_DB === "1") return url;
+  if (url && !warned) {
+    warned = true;
+    console.warn("DATABASE_URL is set but this isn't Vercel: ignoring it (set ALLOW_LOCAL_PROD_DB=1 to use it on purpose, or DEV_DATABASE_URL for a dev database).");
+  }
+  return env.DEV_DATABASE_URL?.trim() ?? "";
+}
+
 async function open(): Promise<Driver> {
-  const url = process.env.DATABASE_URL?.trim();
+  const url = databaseUrl();
   let driver: Driver;
   if (url) {
     const { neon } = await import("@neondatabase/serverless");
@@ -57,7 +73,7 @@ export async function query<T extends Row = Row>(text: string, params: unknown[]
 }
 
 /** False only where there is nowhere to store anything: a deployed function with no DATABASE_URL. */
-export const dbConfigured = () => Boolean(process.env.DATABASE_URL?.trim()) || !process.env.VERCEL;
+export const dbConfigured = () => Boolean(databaseUrl()) || !process.env.VERCEL;
 
 export async function dbKind(): Promise<"neon" | "pglite"> {
   return (await driver()).name;

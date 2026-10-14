@@ -34,10 +34,14 @@ interface Detail {
   events: { kind: string; chainId: number; amount: string | null; status: string | null; at: string | null }[];
 }
 
-class Forbidden extends Error {}
+class Forbidden extends Error {
+  constructor(public stale = false) {
+    super("forbidden");
+  }
+}
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(path, { credentials: "same-origin" });
-  if (res.status === 401 || res.status === 403) throw new Forbidden();
+  if (res.status === 401 || res.status === 403) throw new Forbidden(res.status === 401 && (await res.json().catch(() => null))?.error === "reauth");
   if (!res.ok) throw new Error(`Request failed (${res.status})`);
   return res.json();
 }
@@ -56,7 +60,7 @@ const usdc = (base: string) => (Number(base) / 1e6).toLocaleString("en-US", { ma
 export function Admin() {
   const { status } = useAccount();
   const [data, setData] = useState<Overview | null>(null);
-  const [state, setState] = useState<"loading" | "ok" | "forbidden" | "error">("loading");
+  const [state, setState] = useState<"loading" | "ok" | "forbidden" | "stale" | "error">("loading");
   const [running, setRunning] = useState(false);
   const [ran, setRan] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
@@ -66,7 +70,7 @@ export function Admin() {
       setData(await get<Overview>("/api/admin/index?view=overview"));
       setState("ok");
     } catch (e) {
-      setState(e instanceof Forbidden ? "forbidden" : "error");
+      setState(e instanceof Forbidden ? (e.stale ? "stale" : "forbidden") : "error");
     }
   }, []);
   useEffect(() => {
@@ -91,6 +95,7 @@ export function Admin() {
 
   if (status === "loading") return <Spinner className="h-5 w-5 text-gold-200" />;
   if (status !== "authed") return <ConnectPrompt title="Sign in to continue" hint="Admin is for the owner's account. Sign in on the XP or Settings page first." showDemo={false} />;
+  if (state === "stale") return <Card><EmptyState glyph="⏱" title="Sign in again" hint="Admin access needs a fresh sign-in (it lasts 12 hours). Sign out and back in from Settings." /></Card>;
   if (state === "forbidden") return <Card><EmptyState glyph="🔒" title="Not available" hint="This account isn't an admin." /></Card>;
 
   return (

@@ -6,6 +6,7 @@
 // synthetic-address hash are small enough to do directly with node:crypto and viem.
 import { createHash, createPublicKey, randomBytes, verify as edVerify } from "node:crypto";
 import { getAddress, isAddress, keccak256, verifyMessage } from "viem";
+import { createSiweMessage } from "viem/siwe";
 import { query } from "./db.js";
 
 export type Kind = "evm" | "solana";
@@ -25,9 +26,33 @@ export const fail = (status: number, error: string, message?: string) => json({ 
 /** The public host the browser used (behind Vercel's proxy the URL itself can carry an internal one). */
 export const hostOf = (req: Request) => req.headers.get("x-forwarded-host") ?? req.headers.get("host") ?? new URL(req.url).host;
 
+/**
+ * The hosts a sign-in message may name as its domain: AUTH_HOSTS (comma/space separated) plus the hosts Vercel gives
+ * this deployment. The domain in a signed message is what a wallet compares with the page asking for the signature,
+ * so it must be OURS: a message naming any other host is a phishing tool, however it was obtained. localhost is
+ * allowed off Vercel only (local development and tests).
+ */
+export function hostAllowed(host: string, env: Record<string, string | undefined> = process.env): boolean {
+  const h = host.trim().toLowerCase();
+  if (!h) return false;
+  if (!env.VERCEL && /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/.test(h)) return true;
+  for (const v of [env.AUTH_HOSTS, env.VERCEL_PROJECT_PRODUCTION_URL, env.VERCEL_URL, env.VERCEL_BRANCH_URL]) {
+    for (const entry of String(v ?? "").split(/[\s,]+/)) {
+      if (entry && entry.toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "") === h) return true;
+    }
+  }
+  return false;
+}
+
+/** The caller's address as the platform saw it. Vercel's header can't be set by the client; with none present (local calls) there is nothing to limit by. */
+export const clientIp = (req: Request): string | null => req.headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip")?.trim() || null;
+
 /** POST bodies must be same-origin JSON: blocks cross-site form posts riding the session cookie. */
 export function guardPost(req: Request): Response | null {
   const origin = req.headers.get("origin");
+  // A browser always sends Origin on a POST. A request that carries a session cookie but no Origin isn't a browser
+  // following our own page, so it doesn't get to act as the signed-in user.
+  if (!origin && req.headers.get("cookie")) return fail(403, "origin_required", "Missing Origin header.");
   if (origin) {
     let ok = false;
     try {
@@ -113,22 +138,27 @@ export const originOf = (req: Request) => `${isSecure(req) ? "https" : "http"}:/
 // sign-in request (EIP-4361 / Sign-In With Solana) and refuse to show it unless that first word is
 // the domain of the site asking. Phantom enforces this: a message that opened with the app's *name*
 // was rejected ("domain does not match the requesting app's origin"). So: real domain, real origin.
-export function buildMessage(a: { origin: string; kind: Kind; address: string; purpose: Purpose; nonce: string; issuedAt: Date; expiresAt: Date }): string {
+export function buildMessage(a: { origin: string; kind: Kind; address: string; purpose: Purpose; nonce: string; issuedAt: Date; expiresAt: Date; chainId?: number }): string {
   const domain = new URL(a.origin).host;
   const shown = a.kind === "evm" ? getAddress(a.address) : a.address;
   const what =
     a.purpose === "signin"
       ? "Sign in to Path. This costs nothing and sends no transaction."
       : "Link this wallet to your Path account. This costs nothing and sends no transaction.";
+  // EVM: a strict EIP-4361 (Sign-In With Ethereum) message. Wallets recognise that shape and compare its domain with the
+  // site asking for the signature, warning (MetaMask) or refusing when they differ. That check is what stops a look-alike
+  // site from getting a signature for a message that names Path; a free-form message gets no such check.
+  if (a.kind === "evm") {
+    return createSiweMessage({ address: getAddress(a.address), chainId: a.chainId ?? 1, domain, nonce: a.nonce, uri: a.origin, version: "1", statement: what, issuedAt: a.issuedAt, expirationTime: a.expiresAt });
+  }
   return [
-    `${domain} wants you to sign in with your ${a.kind === "evm" ? "Ethereum" : "Solana"} account:`,
+    `${domain} wants you to sign in with your Solana account:`,
     shown,
     "",
     what,
     "",
     `URI: ${a.origin}`,
-    // SIWS carries a version; for EVM we stay off the strict EIP-4361 shape (it would add chain-id checks).
-    ...(a.kind === "solana" ? ["Version: 1"] : []),
+    "Version: 1",
     `Nonce: ${a.nonce}`,
     `Issued At: ${a.issuedAt.toISOString()}`,
     `Expiration Time: ${a.expiresAt.toISOString()}`,
@@ -167,11 +197,15 @@ export function clearCookie(req: Request): string {
   return `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${isSecure(req) ? "; Secure" : ""}`;
 }
 
-export async function sessionAccount(req: Request): Promise<string | null> {
+export async function sessionInfo(req: Request): Promise<{ accountId: string; createdAt: Date } | null> {
   const token = cookieOf(req, COOKIE);
   if (!token) return null;
-  const rows = await query(`select account_id from sessions where token_hash = $1 and expires_at > now()`, [hashToken(token)]);
-  return (rows[0]?.account_id as string) ?? null;
+  const rows = await query(`select account_id, created_at from sessions where token_hash = $1 and expires_at > now()`, [hashToken(token)]);
+  return rows[0] ? { accountId: rows[0].account_id as string, createdAt: new Date(rows[0].created_at) } : null;
+}
+
+export async function sessionAccount(req: Request): Promise<string | null> {
+  return (await sessionInfo(req))?.accountId ?? null;
 }
 
 export async function endSession(req: Request): Promise<void> {

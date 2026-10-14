@@ -170,11 +170,16 @@ export function AccountProvider({ children }: { children: ReactNode }) {
 
   // The connected wallet's address for a lane, and a function that signs a message with it.
   const lane = useCallback(
-    (kind: Kind): { address: string; sign: (message: string) => Promise<string> } => {
+    (kind: Kind): { address: string; sign: (message: string) => Promise<string>; chainId?: () => Promise<number> } => {
       if (kind === "evm") {
         const { address, provider } = evm;
         if (!address || !provider) throw new Error("Connect MetaMask first.");
-        return { address, sign: async (m) => (await provider.request({ method: "personal_sign", params: [stringToHex(m), address] })) as string };
+        return {
+          address,
+          sign: async (m) => (await provider.request({ method: "personal_sign", params: [stringToHex(m), address] })) as string,
+          // The chain the wallet is on goes into the EIP-4361 message, so the wallet sees nothing unexpected in it.
+          chainId: async () => Number(await provider.request({ method: "eth_chainId" })),
+        };
       }
       const { publicKey, signMessage } = solana;
       if (!publicKey || !signMessage) throw new Error("Connect Phantom first (and use a wallet that can sign messages).");
@@ -188,8 +193,8 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       setBusy(true);
       setError(null);
       try {
-        const { address, sign } = lane(kind);
-        const ch = await api<{ nonce: string; message: string }>("/api/auth/challenge", { kind, address, purpose });
+        const { address, sign, chainId } = lane(kind);
+        const ch = await api<{ nonce: string; message: string }>("/api/auth/challenge", { kind, address, purpose, ...(chainId ? { chainId: await chainId().catch(() => undefined) } : {}) });
         const signature = await sign(ch.message);
         const r = await api<{ account: Account }>("/api/auth/verify", { nonce: ch.nonce, signature });
         setAccount(r.account);

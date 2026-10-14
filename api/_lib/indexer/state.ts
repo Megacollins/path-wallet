@@ -14,6 +14,24 @@ export async function setState(key: string, value: unknown): Promise<void> {
   );
 }
 
+/**
+ * Take a "no more often than every `minIntervalMs`" slot in ONE statement, so simultaneous callers can't all pass a
+ * separate read-then-write check: exactly one of them gets it. When refused, says how long until the slot frees up.
+ */
+export async function claimSlot(key: string, minIntervalMs: number): Promise<{ ok: true } | { ok: false; retryInSeconds: number }> {
+  const now = Date.now();
+  const rows = await query(
+    `insert into indexer_state (key, value) values ($1, $2::jsonb)
+     on conflict (key) do update set value = excluded.value, updated_at = now()
+     where coalesce((indexer_state.value->>'at')::numeric, 0) <= $3
+     returning key`,
+    [key, JSON.stringify({ at: now }), now - minIntervalMs],
+  );
+  if (rows[0]) return { ok: true };
+  const cur = await getState<{ at?: number }>(key);
+  return { ok: false, retryInSeconds: Math.max(1, Math.ceil(((cur?.at ?? now) + minIntervalMs - now) / 1000)) };
+}
+
 /** Create a state row only if it doesn't exist yet; returns whichever value is stored afterwards. */
 export async function createState<T = Record<string, unknown>>(key: string, value: T): Promise<T> {
   await query(`insert into indexer_state (key, value) values ($1, $2::jsonb) on conflict (key) do nothing`, [key, JSON.stringify(value)]);

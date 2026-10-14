@@ -3,7 +3,7 @@
 // synthetic, which holds nothing at rest. Every write uses the Rome SDK.
 import { useMemo, useState } from "react";
 import { isAddress, type Hex } from "viem";
-import { parseAmountSafe } from "../../lib/format";
+import { amountString, baseUnitsOf, parseAmountSafe } from "../../lib/format";
 import type { TokenMeta } from "../../lib/assets";
 import * as rome from "../../lib/rome";
 import { useCfg } from "../network";
@@ -51,8 +51,12 @@ export function Send() {
 
   const recipientValid = isAddress(to);
   const amountBase = token ? parseAmountSafe(amount, activeLane === "solana" ? 6 : token.decimals) : null;
+  // More than the wallet holds (or, for native gas, more than it can spare after gas) is refused before anything is signed.
+  const maxBase = token ? baseUnitsOf(maxAmount, activeLane === "solana" ? 6 : token.decimals) : 0n;
+  const tooMuch = portfolio != null && amountBase != null && amountBase > maxBase;
   const canSend =
     !busy &&
+    !tooMuch &&
     Boolean(token) &&
     recipientValid &&
     amountBase != null &&
@@ -167,7 +171,7 @@ export function Send() {
           {(evm.address || solana.connected) && (
             <span className="text-xs text-parchment/50">
               Balance: <span className="tabular text-parchment/80">{balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span> {balSymbol}
-              <button onClick={() => setAmount(String(maxAmount))} disabled={busy || maxAmount <= 0} className="-my-1.5 ml-1 px-1.5 py-1.5 text-champagne-200 hover:text-champagne-100 disabled:opacity-40">
+              <button onClick={() => setAmount(amountString(maxAmount, activeLane === "solana" ? 6 : token?.decimals ?? 6))} disabled={busy || maxAmount <= 0} className="-my-1.5 ml-1 px-1.5 py-1.5 text-champagne-200 hover:text-champagne-100 disabled:opacity-40">
                 Max
               </button>
             </span>
@@ -184,6 +188,7 @@ export function Send() {
           <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-parchment/50">{activeLane === "solana" ? "wUSDC" : token?.symbol}</span>
         </div>
 
+        {tooMuch && <p className="mt-2 text-xs text-terracotta-300">You can send up to {amountString(maxAmount, 9)} {balSymbol}{isNativeGas ? " (about 0.3 is kept back to pay gas)" : ""}.</p>}
         <Button className="mt-6 w-full" onClick={onSend} loading={busy} disabled={!canSend}>
           {busy ? "Sending…" : `Send ${activeLane === "solana" ? "wUSDC" : token?.symbol ?? ""}`}
         </Button>

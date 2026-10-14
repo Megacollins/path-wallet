@@ -2,13 +2,61 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "functions": {
-    "api/cron/index.ts": { "maxDuration": 60 },
-    "api/account/sync.ts": { "maxDuration": 30 },
-    "api/admin/index.ts": { "maxDuration": 40 }
+    "api/cron/index.ts": {
+      "maxDuration": 60
+    },
+    "api/account/sync.ts": {
+      "maxDuration": 30
+    },
+    "api/admin/index.ts": {
+      "maxDuration": 40
+    }
   },
-  "crons": [{ "path": "/api/cron/index", "schedule": "0 4 * * *" }],
+  "crons": [
+    {
+      "path": "/api/cron/index",
+      "schedule": "0 4 * * *"
+    }
+  ],
   "rewrites": [
-    { "source": "/bridge-api/:path*", "destination": "https://bridge-api.devnet.romeprotocol.xyz/:path*" },
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/bridge-api/:path*",
+      "destination": "https://bridge-api.devnet.romeprotocol.xyz/:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'"
+        },
+        {
+          "key": "Content-Security-Policy-Report-Only",
+          "value": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https:; connect-src 'self' https: wss:; worker-src 'self' blob:; frame-src 'none'"
+        }
+      ]
+    }
   ]
 }

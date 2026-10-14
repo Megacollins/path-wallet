@@ -3,7 +3,7 @@
 // Who is an admin: a signed-in account that has a wallet from the ADMIN_WALLETS list linked to it. Linking a wallet
 // takes a signature from that wallet, so being on the list means controlling the wallet; nothing is typed in or
 // pasted. With ADMIN_WALLETS unset nobody is an admin: closed by default, never open.
-import { fail, normalizeAddress, sessionAccount, type Kind } from "./auth.js";
+import { fail, normalizeAddress, sessionInfo, type Kind } from "./auth.js";
 import { query } from "./db.js";
 import { getState } from "./indexer/state.js";
 import { RULES_VERSION, currentSeason } from "./points/rules.js";
@@ -29,13 +29,34 @@ export async function isAdmin(accountId: string): Promise<boolean> {
   return rows.length > 0;
 }
 
-/** The admin's account id, or the response to send instead (401 not signed in, 403 not an admin). */
-export async function requireAdmin(req: Request): Promise<{ accountId: string } | Response> {
-  const accountId = await sessionAccount(req);
-  if (!accountId) return fail(401, "not_signed_in", "Sign in first.");
-  if (!(await isAdmin(accountId))) return fail(403, "forbidden", "This account isn't an admin.");
-  return { accountId };
+/** Admin power lasts only as long as a FRESH sign-in: the session must have been started within this many hours. */
+export const adminSessionHours = (raw = process.env.ADMIN_SESSION_HOURS) => {
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 12;
+};
+
+export type AdminCheck = { ok: true; accountId: string } | { ok: false; status: number; error: string; message: string };
+
+/** Is this request from an admin with a fresh sign-in? (A long-lived cookie alone is not enough for admin.) */
+export async function adminCheck(req: Request): Promise<AdminCheck> {
+  const s = await sessionInfo(req);
+  if (!s) return { ok: false, status: 401, error: "not_signed_in", message: "Sign in first." };
+  if (!(await isAdmin(s.accountId))) return { ok: false, status: 403, error: "forbidden", message: "This account isn't an admin." };
+  if (Date.now() - s.createdAt.getTime() > adminSessionHours() * 3600_000) return { ok: false, status: 401, error: "reauth", message: `Admin sessions last ${adminSessionHours()} hours. Sign in again.` };
+  return { ok: true, accountId: s.accountId };
 }
+
+/** The admin's account id, or the response to send instead (401 not signed in or stale, 403 not an admin). */
+export async function requireAdmin(req: Request): Promise<{ accountId: string } | Response> {
+  const c = await adminCheck(req);
+  return c.ok ? { accountId: c.accountId } : fail(c.status, c.error, c.message);
+}
+
+/** A whole number from user input, clamped; junk (NaN, "abc", Infinity) falls back to the default instead of reaching SQL. */
+const clampInt = (v: unknown, def: number, min: number, max: number) => {
+  const n = Math.trunc(Number(v));
+  return Number.isFinite(n) ? Math.min(Math.max(n, min), max) : def;
+};
 
 const iso = (v: unknown) => (v ? new Date(v as string).toISOString() : null);
 
@@ -120,8 +141,8 @@ export interface AccountRow {
 /** One page of accounts. `q` matches an id prefix or part of any linked address. */
 export async function listAccounts(opts: { q?: string; sort?: "new" | "points"; limit?: number; offset?: number } = {}): Promise<{ total: number; rows: AccountRow[] }> {
   const season = currentSeason();
-  const limit = Math.min(Math.max(Math.trunc(opts.limit ?? 25), 1), 100);
-  const offset = Math.max(Math.trunc(opts.offset ?? 0), 0);
+  const limit = clampInt(opts.limit, 25, 1, 100);
+  const offset = clampInt(opts.offset, 0, 0, 1_000_000_000);
   const q = String(opts.q ?? "").replace(/[^0-9A-Za-z]/g, "").slice(0, 64); // letters and digits only: also keeps % and _ out of the LIKE
   // The filter text sits at parameter number `p`, so the same clause serves the page query and the count query.
   const whereAt = (p: number) =>

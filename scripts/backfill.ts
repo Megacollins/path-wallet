@@ -8,9 +8,10 @@
 // --from  first block to read (a little before the Vault's first activity). Or set INDEXER_VAULT_FROM_BLOCK_<chainId>.
 // --chain chain id (default: every chain that has a Vault)
 // --yes   required when DATABASE_URL points at a real database: it will insert rows.
+//         From a local machine DATABASE_URL is ignored unless ALLOW_LOCAL_PROD_DB=1 is set (see api/_lib/db.ts).
 import "dotenv/config";
 import { NETWORKS } from "../api/_lib/networks.generated.js";
-import { query } from "../api/_lib/db.js";
+import { databaseUrl, query } from "../api/_lib/db.js";
 import { rpc } from "../api/_lib/indexer/rpc.js";
 import { syncVault } from "../api/_lib/indexer/vault.js";
 
@@ -36,7 +37,7 @@ for (const n of nets) {
 }
 
 // Decide from the environment alone, BEFORE touching any database: opening one also applies migrations.
-const remote = Boolean(process.env.DATABASE_URL?.trim());
+const remote = Boolean(databaseUrl());
 if (remote && !yes) {
   console.error("DATABASE_URL is set, so this would write indexed events to that real database.\nRe-run with --yes to proceed.");
   process.exit(1);

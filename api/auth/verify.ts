@@ -3,11 +3,14 @@
 // link:   adds the wallet to the signed-in account. A wallet belongs to exactly one account.
 import { randomUUID } from "node:crypto";
 import { query } from "../_lib/db.js";
+import { limited } from "../_lib/limits.js";
 import { MAX_WALLETS_PER_KIND, accountView, fail, guardPost, json, readBody, sessionAccount, startSession, syntheticFor, verifySignature, type Kind } from "../_lib/auth.js";
 
 export async function POST(req: Request): Promise<Response> {
   const bad = guardPost(req);
   if (bad) return bad;
+  const slow = await limited(req, "verify-min", 60, 60_000);
+  if (slow) return slow;
   const body = await readBody(req);
   if (typeof body?.nonce !== "string" || typeof body?.signature !== "string") return fail(400, "bad_request", "nonce and signature are required.");
 
@@ -31,7 +34,14 @@ export async function POST(req: Request): Promise<Response> {
     if (!existing) {
       const n = (await query(`select count(*)::int as n from wallets where account_id = $1 and kind = $2`, [accountId, kind]))[0]?.n ?? 0;
       if (n >= MAX_WALLETS_PER_KIND) return fail(400, "too_many_wallets", `You can link up to ${MAX_WALLETS_PER_KIND} ${kind === "evm" ? "EVM" : "Solana"} wallets.`);
-      const ins = await query(`insert into wallets (account_id, kind, address, synthetic_address) values ($1, $2, $3, $4) on conflict (kind, address) do nothing returning id`, [accountId, kind, address, synthetic]);
+      let ins: Awaited<ReturnType<typeof query>>;
+      try {
+        ins = await query(`insert into wallets (account_id, kind, address, synthetic_address) values ($1, $2, $3, $4) on conflict (kind, address) do nothing returning id`, [accountId, kind, address, synthetic]);
+      } catch (e: any) {
+        // The database enforces the cap even when simultaneous requests all passed the count above.
+        if (/wallet_limit/.test(String(e?.message ?? e))) return fail(400, "too_many_wallets", `You can link up to ${MAX_WALLETS_PER_KIND} ${kind === "evm" ? "EVM" : "Solana"} wallets.`);
+        throw e;
+      }
       if (!ins[0]) return fail(409, "wallet_linked_elsewhere", "That wallet is already linked to a different Path account.");
     }
     return json({ account: await accountView(accountId) });

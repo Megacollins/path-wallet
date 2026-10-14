@@ -7,7 +7,7 @@
 import { fail, guardPost, json } from "../_lib/auth.js";
 import { accountDetail, listAccounts, overview, requireAdmin } from "../_lib/admin.js";
 import { runIndexer } from "../_lib/indexer/run.js";
-import { getState, setState } from "../_lib/indexer/state.js";
+import { claimSlot } from "../_lib/indexer/state.js";
 
 const MIN_RUN_INTERVAL_MS = 20_000;
 
@@ -34,8 +34,6 @@ export async function POST(req: Request): Promise<Response> {
   if (bad) return bad;
   const who = await requireAdmin(req);
   if (who instanceof Response) return who;
-  const last = await getState<{ at: number }>("admin:run");
-  if (last && Date.now() - last.at < MIN_RUN_INTERVAL_MS) return fail(429, "too_soon", "A run just started. Give it a few seconds.");
-  await setState("admin:run", { at: Date.now() });
+  if (!(await claimSlot("admin:run", MIN_RUN_INTERVAL_MS)).ok) return fail(429, "too_soon", "A run just started. Give it a few seconds.");
   return json(await runIndexer({ budgetMs: 25_000, vaultMs: 8_000, force: true }));
 }

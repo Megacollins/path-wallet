@@ -134,7 +134,7 @@ process.env.ADMIN_WALLETS = `${EVM_ADMIN} ${SOL_ADMIN}`;
   const post = (headers: Record<string, string>) => call(adminApi.POST, "POST", "/api/admin/index", { "content-type": "application/json", origin: "http://localhost:5188", ...headers });
   check("run: signed out → 401, non-admin → 403", (await post({})).status === 401 && (await post({ cookie: cUser })).status === 403);
   check("run: a cross-site request is refused before anything else", (await post({ cookie: cAdmin, origin: "https://evil.example" })).status === 403 && (await query(`select count(*)::int as n from indexer_state where key = 'admin:run'`))[0].n === 0);
-  check("run: a non-JSON post is refused (415)", (await call(adminApi.POST, "POST", "/api/admin/index", { cookie: cAdmin, "content-type": "text/plain" })).status === 415);
+  check("run: a non-JSON post is refused (415)", (await call(adminApi.POST, "POST", "/api/admin/index", { cookie: cAdmin, origin: "http://localhost:5188", "content-type": "text/plain" })).status === 415);
 
   const r = await post({ cookie: cAdmin });
   const body = await r.json();

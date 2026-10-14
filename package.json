@@ -19,10 +19,11 @@
     "test:points": "tsx scripts/test-points.ts",
     "smoke:evm": "tsx scripts/smoke-evm.ts",
     "test:wrappers": "tsx scripts/test-wrappers.ts",
-    "test": "npm run test:auth && npm run test:indexer && npm run test:points && npm run test:wrappers && npm run test:probe && npm run test:flow && npm run test:admin",
+    "test": "npm run test:auth && npm run test:indexer && npm run test:points && npm run test:wrappers && npm run test:probe && npm run test:flow && npm run test:admin && npm run test:security",
     "test:probe": "tsx scripts/test-lane-probe.ts",
     "test:flow": "tsx scripts/test-lane-flow.ts",
-    "test:admin": "tsx scripts/test-admin.ts"
+    "test:admin": "tsx scripts/test-admin.ts",
+    "test:security": "tsx scripts/test-security.ts"
   },
   "dependencies": {
     "@canton-network/dapp-sdk": "^1.7.1",
@@ -34,10 +35,7 @@
     "@solana/wallet-adapter-base": "^0.9.27",
     "@solana/wallet-adapter-phantom": "^0.9.28",
     "@solana/wallet-adapter-react": "^0.15.39",
-    "@solana/wallet-adapter-wallets": "^0.19.38",
-    "@solana/wallet-standard-features": "^1.5.0",
     "@solana/web3.js": "^1.95.0",
-    "@tanstack/react-query": "^5.101.4",
     "@wallet-standard/app": "^1.1.1",
     "@wallet-standard/base": "^1.1.1",
     "buffer": "^6.0.3",
@@ -46,8 +44,7 @@
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.18.1",
-    "viem": "^2.21.0",
-    "wagmi": "^3.7.4"
+    "viem": "^2.21.0"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

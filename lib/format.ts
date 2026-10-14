@@ -30,6 +30,25 @@ export function formatUsdCompact(value: number | null | undefined): string {
   return value.toLocaleString("en-US", { style: "currency", currency: "USD", notation: "compact", maximumFractionDigits: 2 });
 }
 
+/**
+ * A balance held as a JS number, as a plain decimal string for an input box: at most 9 places (and never more than
+ * `decimals`), rounded DOWN so it never exceeds what the wallet holds, and free of float noise (2.15 - 0.3 is
+ * 1.8499999999999999 as a number, which parseAmountSafe rightly rejects, so a Max button must not write that).
+ */
+export function amountString(n: number, decimals: number): string {
+  const dp = Math.max(0, Math.min(decimals, 9));
+  if (!Number.isFinite(n) || n <= 0) return "0";
+  const scaled = BigInt(Math.floor(Number((n * 10 ** dp).toFixed(3)))); // toFixed first: it removes the float noise before we round down
+  const unit = 10n ** BigInt(dp);
+  const frac = (scaled % unit).toString().padStart(dp, "0").replace(/0+$/, "");
+  return `${scaled / unit}${frac ? "." + frac : ""}`;
+}
+
+/** The same balance in base units for `decimals` (so it can be compared with a parsed amount). */
+export function baseUnitsOf(n: number, decimals: number): bigint {
+  return parseAmountSafe(amountString(n, decimals), decimals) ?? 0n;
+}
+
 /** Parse a user-typed decimal string into base units for `decimals`. Returns null when invalid. */
 export function parseAmountSafe(input: string, decimals: number): bigint | null {
   const t = input.trim();
