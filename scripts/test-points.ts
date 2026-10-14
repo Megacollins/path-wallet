@@ -66,13 +66,13 @@ const get = (h: (r: Request) => Promise<Response>, path: string, headers: Record
 
   await snap(E, HADRIAN, 100, "2026-10-09T20:00:00Z"); // +84 more the same day
   const r3 = await scorePoints();
-  check("a burst is capped at 20 transaction points per wallet per day", (await rows("tx_activity")) === 20 && r3.awarded === 14, { rows: await rows("tx_activity"), r3 });
-  check("…and a re-run after the cap is a no-op", (await scorePoints()).awarded === 0);
+  check("a burst is paid in full: every one of the 90 transactions that day earns its point", (await rows("tx_activity")) === 90 && r3.awarded === 84, { rows: await rows("tx_activity"), r3 });
+  check("…and a re-run is a no-op", (await scorePoints()).awarded === 0);
 
   await snap(E, HADRIAN, 101, "2026-10-10T01:00:00Z");
   const r4 = await scorePoints();
   check("the next UTC day starts fresh: 1 tx + a new active-day bonus", r4.awarded === 6 && (await rows("active_day")) === 2, r4);
-  check("the account's balance is the sum of its ledger rows", (await total(A)) === 8 + 3 + 14 + 6, await total(A));
+  check("the account's balance is the sum of its ledger rows", (await total(A)) === 8 + 3 + 84 + 6, await total(A));
 }
 
 {
@@ -96,7 +96,23 @@ const get = (h: (r: Request) => Promise<Response>, path: string, headers: Record
   await snap(E, HADRIAN, 15, "2026-10-09T12:00:00Z");
   await snap(E, MARTIUS, 15, "2026-10-09T12:00:00Z");
   await scorePoints();
-  check("the daily cap applies to a wallet across chains, not per chain (30 txs → 20 points)", (await rows("tx_activity")) === 20 && (await rows("active_day")) === 1);
+  check("transactions on every chain count (15 on each of two chains → 30 points, one active-day bonus)", (await rows("tx_activity")) === 30 && (await rows("active_day")) === 1);
+}
+
+{
+  await reset();
+  const E = hex(0xa4);
+  await account([{ kind: "evm", address: E }]);
+  await snap(E, HADRIAN, 0, "2026-10-09T08:00:00Z");
+  await snap(E, HADRIAN, 500, "2026-10-09T12:00:00Z");
+  await scorePoints();
+  check("a 500-transaction day is paid in full, with the default rules", (await rows("tx_activity")) === 500);
+  await reset();
+  await account([{ kind: "evm", address: E }]);
+  await snap(E, HADRIAN, 0, "2026-10-09T08:00:00Z");
+  await snap(E, HADRIAN, 500, "2026-10-09T12:00:00Z");
+  await scorePoints({ rules: { ...RULES, tx_activity: { enabled: true, perTx: 1, dailyCapPerWallet: 20 } } });
+  check("a cap can still be switched on in the rules (kept as a knob, off by default)", (await rows("tx_activity")) === 20);
 }
 
 {
@@ -213,7 +229,7 @@ const get = (h: (r: Request) => Promise<Response>, path: string, headers: Record
   await snap(E, HADRIAN, 60, "2026-10-09T09:00:00Z");
   for (let i = 0; i < 5; i++) await bridge(E, 1_500_000, "complete", `2026-10-09T10:0${i}:00Z`);
   await Promise.all([scorePoints(), scorePoints(), scorePoints()]);
-  check("three scorers racing produce exactly one scorer's result: no duplicates, caps intact", (await total(A)) === 20 + 5 + 75 && (await query(`select count(*)::int as n from points_ledger`))[0].n === 24, { total: await total(A) });
+  check("three scorers racing produce exactly one scorer's result: no duplicates, caps intact", (await total(A)) === 60 + 5 + 75 && (await query(`select count(*)::int as n from points_ledger`))[0].n === 64, { total: await total(A) });
 }
 
 {

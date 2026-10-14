@@ -25,6 +25,9 @@ const Ctx = createContext<ToastApi | null>(null);
 
 let seq = 1;
 
+/** Fired on `window` whenever a transaction the app ran settles. */
+export const TX_SETTLED = "path:tx-settled";
+
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
 
@@ -53,6 +56,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
       try {
         const result = await fn((text) => update(id, { message: text }));
         update(id, { kind: "success", title: opts?.success ?? "Confirmed", message: label });
+        // Anything that settled on Rome may have earned XP: the account provider listens and refreshes it.
+        window.dispatchEvent(new Event(TX_SETTLED));
         return result;
       } catch (e: any) {
         update(id, { kind: "error", title: "Transaction failed", message: cleanErr(e) });

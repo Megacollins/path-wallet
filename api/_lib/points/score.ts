@@ -119,7 +119,8 @@ export async function scorePoints(opts: { accountId?: string; rules?: Rules; sea
       lanes.set(o.accountId, l);
       if (rules.tx_activity.enabled) {
         // One row per transaction slot, 1..cap. The ref names the slot, so the cap can't be exceeded by a race.
-        for (let k = 1; k <= Math.min(txs, rules.tx_activity.dailyCapPerWallet); k++) {
+        const cap = rules.tx_activity.dailyCapPerWallet;
+        for (let k = 1; k <= (cap == null ? txs : Math.min(txs, cap)); k++) {
           unguarded.push({ accountId: o.accountId, rule: "tx_activity", ref: `${r.address}:${r.day}:${k}`, points: rules.tx_activity.perTx, day: r.day, address: r.address, detail: { slot: k, txsThatDay: txs } });
         }
       }

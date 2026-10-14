@@ -6,6 +6,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { stringToHex } from "viem";
 import { useWallets } from "./wallet";
 import type { XpData } from "./lib/xp";
+import { TX_SETTLED } from "./components/Toast";
 
 export type Kind = "evm" | "solana";
 export interface AccountWallet {
@@ -121,6 +122,32 @@ export function AccountProvider({ children }: { children: ReactNode }) {
       .then(() => loadXp())
       .catch(() => {});
   }, [account, loadXp]);
+
+  // A transaction just settled somewhere in the app: give the chain a moment, sync, and show the new XP. The server
+  // throttles syncs, so when it says "wait", try again once it's over (the later sync still counts everything).
+  useEffect(() => {
+    if (!accountId) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const attempt = async (retries: number) => {
+      const r = await fetch("/api/account/sync", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: "{}" })
+        .then((x) => x.json())
+        .catch(() => null);
+      if (r?.skipped && retries > 0) {
+        timer = setTimeout(() => void attempt(retries - 1), (Number(r.retryInSeconds) || 30) * 1000 + 1000);
+        return;
+      }
+      await loadXp();
+    };
+    const onSettled = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => void attempt(2), 4000);
+    };
+    window.addEventListener(TX_SETTLED, onSettled);
+    return () => {
+      window.removeEventListener(TX_SETTLED, onSettled);
+      clearTimeout(timer);
+    };
+  }, [accountId, loadXp]);
 
   // The connected wallet's address for a lane, and a function that signs a message with it.
   const lane = useCallback(

@@ -11,7 +11,7 @@ export const currentSeason = () => process.env.POINTS_SEASON?.trim() || "devnet-
 
 export interface Rules {
   /** Every transaction a wallet sends on Rome (any app), counted from its transaction-count (nonce) change. */
-  tx_activity: { enabled: boolean; perTx: number; dailyCapPerWallet: number };
+  tx_activity: { enabled: boolean; perTx: number; /** null = every transaction counts, no daily limit. */ dailyCapPerWallet: number | null };
   /** A day (UTC) on which a wallet sent at least one Rome transaction. Rewards coming back, resists spam. */
   active_day: { enabled: boolean; points: number };
   /** A bridge-in that completed (settled on Rome). Rome sponsors the settlement, so it never shows in the wallet's own count. */
@@ -23,7 +23,7 @@ export interface Rules {
 }
 
 export const RULES: Rules = {
-  tx_activity: { enabled: true, perTx: 1, dailyCapPerWallet: 20 },
+  tx_activity: { enabled: true, perTx: 1, dailyCapPerWallet: null },
   active_day: { enabled: true, points: 5 },
   bridge_in: { enabled: true, points: 25, minAmountBaseUnits: 1_000_000, dailyCapPerWallet: 3 }, // 1 USDC (6 decimals)
   dual_lane: { enabled: true, points: 50 },
@@ -36,7 +36,7 @@ export const RULES: Rules = {
  */
 export function describeRules(r: Rules = RULES) {
   return [
-    { rule: "tx_activity", enabled: r.tx_activity.enabled, text: `${r.tx_activity.perTx} {xp} per transaction your wallet sends on Rome, up to ${r.tx_activity.dailyCapPerWallet} a day per wallet` },
+    { rule: "tx_activity", enabled: r.tx_activity.enabled, text: `${r.tx_activity.perTx} {xp} for every transaction your wallet sends on Rome${r.tx_activity.dailyCapPerWallet == null ? "" : `, up to ${r.tx_activity.dailyCapPerWallet} a day per wallet`}` },
     { rule: "active_day", enabled: r.active_day.enabled, text: `${r.active_day.points} {xp} for each day (UTC) a wallet sends at least one transaction` },
     { rule: "bridge_in", enabled: r.bridge_in.enabled, text: `${r.bridge_in.points} {xp} per completed bridge-in of at least ${r.bridge_in.minAmountBaseUnits / 1e6} USDC, up to ${r.bridge_in.dailyCapPerWallet} a day per wallet` },
     { rule: "dual_lane", enabled: r.dual_lane.enabled, text: `${r.dual_lane.points} {xp} once, when both lanes (EVM and Solana) are linked and each has sent a transaction` },
